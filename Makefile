@@ -20,18 +20,25 @@ LDFLAGS    := $(ARCH) -L$(GLFW_PREFIX)/lib -lglfw \
               -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
 
 BIN        := fractal
-APP_SRCS   := src/main.cpp src/cli.cpp src/palette.cpp src/renderer.cpp
+APP_SRCS   := src/main.cpp src/cli.cpp src/palette.cpp src/renderer.cpp \
+              src/buddhabrot.cpp src/explorer.cpp
 APP_OBJS   := $(APP_SRCS:.cpp=.o)
 
-# Tests link only the GL-free units, so they run without a display.
+# Tests link only the GL-free units, so they run without a display. buddhabrot
+# is GL-free (CPU scatter), so it's covered too; explorer/renderer are GL-only.
 TEST_BIN   := run_tests
 TEST_SRCS  := tests/test_main.cpp tests/test_palette.cpp \
               tests/test_fractal_math.cpp tests/test_cli.cpp \
-              src/cli.cpp src/palette.cpp
+              tests/test_buddhabrot.cpp tests/test_periodic.cpp \
+              src/cli.cpp src/palette.cpp src/buddhabrot.cpp
 
-.PHONY: all test clean run
+.PHONY: all test clean run app
 
 all: $(BIN)
+
+# Package the explorer as a double-clickable macOS .app bundle.
+app: $(BIN)
+	@bash packaging/make_app.sh
 
 $(BIN): $(APP_OBJS)
 	$(CXX) $(APP_OBJS) -o $@ $(LDFLAGS)
@@ -56,4 +63,4 @@ run: $(BIN)
 
 clean:
 	rm -f $(APP_OBJS) $(APP_OBJS:.o=.d) $(BIN) $(TEST_BIN)
-	rm -rf $(BIN).dSYM $(TEST_BIN).dSYM
+	rm -rf $(BIN).dSYM $(TEST_BIN).dSYM FractalScape.app

@@ -154,6 +154,9 @@ R"(fractal — a GPU fractal visualizer for stunning Julia & Mandelbrot art.
 USAGE
   fractal render [options]      Render a single still image (PNG).
   fractal video  [options]      Render a seamless animation (MP4, needs ffmpeg).
+  fractal buddhabrot [options]  Render a Buddhabrot/Nebulabrot density (PNG).
+  fractal explore [options]     Open the interactive explorer window.
+  fractal center [options]      Refine a zoom target to an exact periodic point.
   fractal help                  Show this help.
 
 COMMON OPTIONS
@@ -218,10 +221,40 @@ VIDEO OPTIONS
   -d, --duration <float>          Seconds                   (default: 20)
       --fps <int>                 Frames per second         (default: 30)
       --crf <int>                 x264 quality, lower=better(default: 18)
+      --color-cycles <float>      Palette sweeps over the clip, any mode (def: 0)
       --rotate-radius <float>     |c| for rotate mode       (default: 0.7885)
       --zoom-end <float>          End scale for zoom mode    (default: 0.005)
       --zoom-target-x <float>     Zoom target x             (default: 0)
       --zoom-target-y <float>     Zoom target y             (default: 0)
+
+BUDDHABROT OPTIONS (the `buddhabrot` command; CPU, quadratic only)
+      --samples <float>           Millions of seed orbits    (default: 30)
+      --nebula                    RGB Nebulabrot (3 thresholds) vs palette density
+      --nebula-r <int>            R channel max-iter         (default: 5000)
+      --nebula-g <int>            G channel max-iter         (default: 500)
+      --nebula-b <int>            B channel max-iter         (default: 50)
+      --buddha-gamma <float>      Density tone curve         (default: 2.2)
+      (single-channel density is colored through -p / --palette; -i sets the
+       threshold. center/scale/size frame the output; wide views work best.)
+
+EXPLORER (the `explore` command): drag to pan, scroll to zoom, keys to tweak.
+      Press the controls printed on launch; Space prints a render command,
+      Enter saves a PNG. Defaults to a 900x900 window.
+
+CENTER SOLVER (the `center` command): Newton-refine an approximate target to an
+exact self-similar point so deep zooms stay locked. Pass the eyeballed guess as
+--center-x/--center-y (and --cre/--cim for a Julia set), then:
+      --max-period <int>          Largest period to search    (default: 128)
+      --period <int>              Force one period (skip search)
+      --misiurewicz               Mandelbrot: find a Misiurewicz point instead of
+                                  a nucleus (self-similar, no interior -> best for
+                                  deep zooms; a nucleus has a body you fall into)
+      --max-preperiod <int>       Largest preperiod to search (default: 48)
+      --scale <float>             Search radius around the guess (default: 0.01)
+  Julia: finds the nearest repelling periodic point (a spiral eye). Mandelbrot:
+  the period-p nucleus (a minibrot center), or with --misiurewicz a preperiodic
+  spiral center. Prints exact coordinates and a ready-to-run video command.
+  Quadratic map only.
 
 PALETTES
   )";
@@ -246,6 +279,9 @@ EXAMPLES
   fractal video --mode rotate -d 20 --fps 30 -o loop.mp4
   fractal video --type mandelbrot --mode zoom --zoom-target-x -0.743 \
                 --zoom-target-y 0.131 --zoom-end 0.0005 -o dive.mp4
+  fractal buddhabrot --nebula --samples 60 -o nebula.png
+  fractal buddhabrot -p gold --samples 40 -o buddha.png
+  fractal explore -P ember-seahorse
 )";
     return o.str();
 }
@@ -262,13 +298,22 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
     }
     if (cmd == "render")      out.kind = CommandKind::Render;
     else if (cmd == "video")  out.kind = CommandKind::Video;
-    else { out.error = "unknown command '" + cmd + "' (expected 'render' or 'video')"; return out; }
+    else if (cmd == "buddhabrot" || cmd == "buddha") out.kind = CommandKind::Buddha;
+    else if (cmd == "explore") out.kind = CommandKind::Explore;
+    else if (cmd == "center")  out.kind = CommandKind::Center;
+    else { out.error = "unknown command '" + cmd + "' (expected render, video, buddhabrot, explore, or center)"; return out; }
 
     // Parse everything into a VideoConfig; the Render path uses the base slice.
     VideoConfig cfg;
     std::string palette_spec = "noir";
     bool output_set = false;
     bool ssaa_set = false;
+    bool size_set = false;
+    bool scale_set = false;
+    int  max_period = 128;
+    int  find_period = 0;
+    bool misiurewicz = false;
+    int  max_preperiod = 48;
 
     // Apply a preset first (as the base) so explicit flags can override it,
     // regardless of where --preset appears in the arguments.
@@ -312,11 +357,11 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "--cim") { if (!cur.nextDouble(flag, cfg.julia_cim)) break; }
         else if (flag == "--center-x" || flag == "--cx") { if (!cur.nextDouble(flag, cfg.center_x)) break; }
         else if (flag == "--center-y" || flag == "--cy") { if (!cur.nextDouble(flag, cfg.center_y)) break; }
-        else if (flag == "--scale") { if (!cur.nextDouble(flag, cfg.scale)) break; }
+        else if (flag == "--scale") { if (!cur.nextDouble(flag, cfg.scale)) break; scale_set = true; }
         else if (flag == "--zoom") {
             double z; if (!cur.nextDouble(flag, z)) break;
             if (z <= 0) { fail("--zoom must be positive"); break; }
-            cfg.scale = 1.35 / z;
+            cfg.scale = 1.35 / z; scale_set = true;
         }
         else if (flag == "-i" || flag == "--iterations" || flag == "--iter") {
             if (!cur.nextInt(flag, cfg.max_iter)) break;
@@ -327,14 +372,17 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "-w" || flag == "--width")  {
             if (!cur.nextInt(flag, cfg.width)) break;
             if (cfg.width < 1) { fail("--width must be >= 1"); break; }
+            size_set = true;
         }
         else if (flag == "--height") {
             if (!cur.nextInt(flag, cfg.height)) break;
             if (cfg.height < 1) { fail("--height must be >= 1"); break; }
+            size_set = true;
         }
         else if (flag == "--size") {
             std::string v; if (!cur.nextStr(flag, v)) break;
             if (!parseSize(v, cfg.width, cfg.height)) { fail("--size must be WxH, e.g. 1920x1080"); break; }
+            size_set = true;
         }
         else if (flag == "--ssaa") {
             if (!cur.nextInt(flag, cfg.ssaa)) break;
@@ -378,6 +426,22 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "--grain")      { if (!cur.nextDouble(flag, cfg.grain)) break; }
         else if (flag == "--scanlines")  { if (!cur.nextDouble(flag, cfg.scanlines)) break; }
         else if (flag == "--deep")       { cfg.deep = true; }
+        // ---- buddhabrot / nebulabrot ----
+        else if (flag == "--samples")    { if (!cur.nextDouble(flag, cfg.samples)) break;
+            if (cfg.samples <= 0) { fail("--samples must be positive"); break; } }
+        else if (flag == "--nebula")     { cfg.nebula = true; }
+        else if (flag == "--nebula-r")   { if (!cur.nextInt(flag, cfg.nebula_r)) break; }
+        else if (flag == "--nebula-g")   { if (!cur.nextInt(flag, cfg.nebula_g)) break; }
+        else if (flag == "--nebula-b")   { if (!cur.nextInt(flag, cfg.nebula_b)) break; }
+        else if (flag == "--buddha-gamma"){ if (!cur.nextDouble(flag, cfg.buddha_gamma)) break; }
+        // ---- center solver ----
+        else if (flag == "--max-period") { if (!cur.nextInt(flag, max_period)) break;
+            if (max_period < 1) { fail("--max-period must be >= 1"); break; } }
+        else if (flag == "--period")     { if (!cur.nextInt(flag, find_period)) break;
+            if (find_period < 1) { fail("--period must be >= 1"); break; } }
+        else if (flag == "--misiurewicz") { misiurewicz = true; }
+        else if (flag == "--max-preperiod") { if (!cur.nextInt(flag, max_preperiod)) break;
+            if (max_preperiod < 1) { fail("--max-preperiod must be >= 1"); break; } }
         else if (flag == "-o" || flag == "--output") {
             if (!cur.nextStr(flag, cfg.output)) break;
             output_set = true;
@@ -400,6 +464,7 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
             if (cfg.fps < 1) { fail("--fps must be >= 1"); break; }
         }
         else if (flag == "--crf") { if (!cur.nextInt(flag, cfg.crf)) break; }
+        else if (flag == "--color-cycles")  { if (!cur.nextDouble(flag, cfg.color_cycles)) break; }
         else if (flag == "--rotate-radius") { if (!cur.nextDouble(flag, cfg.rotate_radius)) break; }
         else if (flag == "--zoom-end")      { if (!cur.nextDouble(flag, cfg.zoom_end)) break; }
         else if (flag == "--zoom-target-x") { if (!cur.nextDouble(flag, cfg.zoom_target_x)) break; }
@@ -410,6 +475,19 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
     if (!cur.error.empty() && out.error.empty()) out.error = cur.error;
     if (!out.error.empty()) return out;
     if (out.kind == CommandKind::Help) return out;
+
+    // The center solver doesn't render, so it skips palette/output defaults. It
+    // reuses --scale as the search radius around the guess; pick a sane default
+    // (the whole-set scale is far too wide and would just return period 1).
+    if (out.kind == CommandKind::Center) {
+        out.render = static_cast<RenderConfig>(cfg);
+        if (!scale_set) out.render.scale = 0.01;
+        out.max_period = max_period;
+        out.find_period = find_period;
+        out.misiurewicz = misiurewicz;
+        out.max_preperiod = max_preperiod;
+        return out;
+    }
 
     // Resolve palette.
     if (!parsePalette(palette_spec, cfg.palette)) {
@@ -425,13 +503,21 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
     if (out.kind == CommandKind::Video && !ssaa_set) cfg.ssaa = 2;
 
     // Cycle-mode video sweeps the palette phase, which only loops seamlessly
-    // with a closed gradient.
-    if (out.kind == CommandKind::Video && cfg.mode == AnimMode::Cycle) cfg.cyclic = true;
+    // with a closed gradient. The same goes for an overlaid --color-cycles sweep.
+    if (out.kind == CommandKind::Video &&
+        (cfg.mode == AnimMode::Cycle || cfg.color_cycles != 0.0)) cfg.cyclic = true;
 
-    if (out.kind == CommandKind::Render) {
-        out.render = static_cast<RenderConfig>(cfg); // slice base
-    } else {
+    // The explorer redraws on every interaction, so default it to a responsive
+    // window size and light supersampling unless the user asked otherwise.
+    if (out.kind == CommandKind::Explore) {
+        if (!size_set) { cfg.width = 900; cfg.height = 900; }
+        if (!ssaa_set) cfg.ssaa = 2;
+    }
+
+    if (out.kind == CommandKind::Video) {
         out.video = cfg;
+    } else {
+        out.render = static_cast<RenderConfig>(cfg); // Render / Buddha / Explore
     }
     return out;
 }

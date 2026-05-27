@@ -61,6 +61,12 @@ const std::map<std::string, std::vector<std::string>>& namedPalettes() {
         // a violet bridge, one cyan pop at the top -- no green/yellow. Built for
         // album art; pairs with the cover-* presets.
         {"vice",        {"#070010", "#5e0048", "#b80077", "#ff1a8d", "#ff66c4", "#c44bff", "#36e6ff"}},
+        // Neon structure (pink/purple/cyan) bracketed by a BROAD dark band, so
+        // deep-zoom "lakes" (slow-escape regions, which land at the top of the
+        // ramp) read dark instead of the bright olive plain neon gives them. The
+        // dark ends loop cleanly, so when cycled the background breathes through
+        // black -> jewel tones rather than smearing. Built for deep zooms.
+        {"neon-dark",   {"#02010a", "#150026", "#ff1a8d", "#8a50e0", "#00e5ff", "#071030"}},
         // Pink + cyan, saturated rather than pastel: the old version was three
         // light tints in a row, which washed out. Near-black anchor + one light
         // stop keeps the contrast.

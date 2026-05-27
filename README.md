@@ -65,6 +65,9 @@ fractal render -t mandelbrot --formula tricorn -p frost -o tricorn.png
 fractal video -P cover-mandala --mode spin -d 8 -o spin.mp4
 ```
 
+`--color-cycles N` overlays N palette sweeps onto any mode, so you can cycle
+colors while zooming (it forces a cyclic gradient so the sweep stays smooth).
+
 ## Covers and the design layer
 
 Off-by-default toggles: `--kaleido N` (mirrored-wedge mandala), `--aberration`
@@ -77,6 +80,52 @@ for streaming or print.
 Mix them onto any render, for example `fractal render -P ember-seahorse
 --kaleido 12 --vignette 0.4`. [assets/test_cover.png](assets/test_cover.png) is
 the `cover-hero` location with the `cover-glitch` treatment.
+
+## Buddhabrot and Nebulabrot
+
+A different way to draw the set. Instead of coloring a pixel by how its own
+orbit escapes, `fractal buddhabrot` fires millions of random orbits and
+accumulates the paths of the ones that escape into a density buffer. Interior
+orbits are thrown away, which is what leaves the ghostly nebula. This is a
+scatter operation that macOS OpenGL can't do (no compute shaders or image
+atomics at 4.1), so it runs multithreaded on the CPU.
+
+```sh
+fractal buddhabrot -t mandelbrot --nebula --samples 250 -o nebula.png
+fractal buddhabrot -t mandelbrot --samples 250 -i 2000 -p gold -o buddha.png
+```
+
+`--samples` (in millions) is the quality lever. `--nebula` renders three
+iteration thresholds into red, green, and blue for the classic Nebulabrot;
+without it the single-channel density is colored through the palette. Quadratic
+only, and it is happiest on wide views.
+
+![nebulabrot](assets/nebulabrot.png)
+
+## Interactive explorer
+
+`fractal explore` opens a live window. Drag to pan, scroll to zoom toward the
+cursor, and use the keyboard to cycle palettes and formulas, morph the Julia
+constant with the arrow keys, toggle deep precision, and so on. Space prints a
+`fractal render` command that reproduces the current view (so you can re-render
+it at full resolution), and Enter saves a PNG snapshot. The full key map prints
+on launch.
+
+```sh
+fractal explore -P ember-seahorse
+```
+
+To get a double-clickable macOS app instead of the CLI, build a bundle:
+
+```sh
+make app          # -> FractalScape.app
+open FractalScape.app
+```
+
+`make app` wraps the binary and its shaders into `FractalScape.app` (icon
+included) and clears the quarantine bit so it launches unsigned. Double-click it
+in Finder, or drag it to your Applications folder or Dock. It opens straight
+into the explorer.
 
 ## How it works
 
@@ -113,6 +162,33 @@ fractal render -t mandelbrot --center-x -0.743643887037151 \
 ```
 
 ![10^11x deep zoom](assets/deep_zoom.png)
+
+[zoom_neon_dust.mp4](assets/zoom_neon_dust.mp4) is a `--deep` dive of about ten
+decades into a spiral of the neon-dust Julia set, down to the df64 wall, on the
+`neon-dark` palette with a slow one-cycle palette sweep (`--color-cycles 1`).
+The `neon-dark` palette brackets the neon hues with a broad dark band: at deep
+zoom the smooth "lakes" between filaments are slow-escape regions that map to the
+top of the ramp, so a bright top (like plain `neon`) tints them olive, while a
+dark top renders them black and lets the structure pop.
+
+## Finding exact centers
+
+A deep zoom only stays sharp if the frame is centered on a point that is
+self-similar all the way down. Those are not arbitrary coordinates: a Julia
+spiral eye is a repelling periodic point (`f^p(z) = z`) and a Mandelbrot
+miniature is a nucleus (`f^p(0) = 0`). Eyeballing a spiral gets you about seven
+digits before it drifts off frame; `fractal center` Newton-refines a guess to an
+exact point (the search runs in double-double precision so the result is good to
+the renderer's df64 wall).
+
+```sh
+fractal center --type julia --cre 0.285 --cim 0.01 \
+  --center-x -0.5265 --center-y 0.1889 --max-period 256
+```
+
+It prints the exact coordinates, the period and multiplier, and a ready-to-run
+`fractal video --deep` command that zooms into them. The neon-dust video above
+was targeted this way (a period-79 point).
 
 ## Credits
 

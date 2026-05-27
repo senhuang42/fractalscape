@@ -41,6 +41,14 @@ void test_palette() {
     CHECK(!names.empty());
     CHECK(std::find(names.begin(), names.end(), "aurora") != names.end());
 
+    // neon-dark resolves and is anchored dark at BOTH ends (the broad dark band
+    // that keeps deep-zoom lakes from going olive, and loops cleanly when cycled).
+    std::vector<Color> nd;
+    CHECK(parsePalette("neon-dark", nd));
+    CHECK(nd.size() >= 4);
+    CHECK(nd.front().r < 0.1f && nd.front().g < 0.1f && nd.front().b < 0.1f);
+    CHECK(nd.back().r < 0.1f && nd.back().g < 0.1f && nd.back().b < 0.25f);
+
     // ---- buildGradient ----
     std::vector<Color> two = {{0,0,0}, {1,1,1}};
     auto g = buildGradient(two, 256, /*cyclic=*/false);

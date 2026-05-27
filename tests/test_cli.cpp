@@ -148,6 +148,59 @@ void test_cli() {
         CHECK(!parse({"render"}).render.deep);
         CHECK(parse({"render", "--deep"}).render.deep);
     }
+    {
+        // ---- buddhabrot ----
+        auto p = parse({"buddhabrot"});
+        CHECK(p.error.empty());
+        CHECK(p.kind == CommandKind::Buddha);
+        CHECK(p.render.output == "fractal.png"); // not mp4
+        CHECK_NEAR(p.render.samples, 30.0, 1e-9);
+        CHECK(!p.render.nebula);
+        CHECK(parse({"buddha"}).kind == CommandKind::Buddha); // alias
+        auto n = parse({"buddhabrot", "--nebula", "--samples", "12.5",
+                        "--nebula-r", "4000", "--buddha-gamma", "3"});
+        CHECK(n.render.nebula);
+        CHECK_NEAR(n.render.samples, 12.5, 1e-9);
+        CHECK(n.render.nebula_r == 4000);
+        CHECK_NEAR(n.render.buddha_gamma, 3.0, 1e-9);
+        CHECK(!parse({"buddhabrot", "--samples", "0"}).error.empty()); // must be > 0
+    }
+    {
+        // ---- explore ----
+        auto p = parse({"explore"});
+        CHECK(p.error.empty());
+        CHECK(p.kind == CommandKind::Explore);
+        CHECK(p.render.width == 900 && p.render.height == 900); // responsive default
+        CHECK(p.render.ssaa == 2);
+        // explicit size/ssaa win over the explore defaults
+        auto q = parse({"explore", "--size", "1200x800", "--ssaa", "4"});
+        CHECK(q.render.width == 1200 && q.render.height == 800);
+        CHECK(q.render.ssaa == 4);
+    }
+    {
+        // ---- color-cycles overlay (auto-enables cyclic on video) ----
+        CHECK_NEAR(parse({"video"}).video.color_cycles, 0.0, 1e-9);
+        auto p = parse({"video", "--mode", "zoom", "--color-cycles", "3"});
+        CHECK_NEAR(p.video.color_cycles, 3.0, 1e-9);
+        CHECK(p.video.cyclic); // forced on so the sweep is seamless
+    }
+    {
+        // ---- center solver command ----
+        auto p = parse({"center", "--type", "julia", "--cre", "0.285", "--cim", "0.01",
+                        "--center-x", "-0.5265", "--center-y", "0.1889",
+                        "--max-period", "256"});
+        CHECK(p.error.empty());
+        CHECK(p.kind == CommandKind::Center);
+        CHECK(p.max_period == 256);
+        CHECK(p.find_period == 0);
+        CHECK_NEAR(p.render.julia_cre, 0.285, 1e-12);
+        CHECK_NEAR(p.render.center_x, -0.5265, 1e-12);
+        CHECK_NEAR(p.render.scale, 0.01, 1e-12); // default search radius
+        // explicit --scale overrides the radius; --period forces a period
+        auto q = parse({"center", "--center-x", "-0.5", "--scale", "1e-6", "--period", "12"});
+        CHECK_NEAR(q.render.scale, 1e-6, 1e-18);
+        CHECK(q.find_period == 12);
+    }
     CHECK(!parse({"render", "-P", "bogus"}).error.empty());
 
     // ---- error handling ----

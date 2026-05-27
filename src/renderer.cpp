@@ -1,6 +1,7 @@
 #include "renderer.h"
 #include "gl.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -53,6 +54,9 @@ std::string findShaderDir(const std::string& explicit_dir) {
     const std::string exe = executableDir();
     candidates.push_back(exe + "/shaders");
     candidates.push_back(exe + "/../shaders");
+    // Inside a .app bundle the binary lives in Contents/MacOS/ and shaders are
+    // copied to Contents/Resources/shaders/.
+    candidates.push_back(exe + "/../Resources/shaders");
     for (const auto& c : candidates)
         if (fileExists(c + "/fullscreen.vert")) return c;
     return {};
@@ -149,7 +153,8 @@ Renderer::~Renderer() {
 }
 
 bool Renderer::init(int width, int height, int ssaa,
-                    const std::string& shader_dir, std::string& err) {
+                    const std::string& shader_dir, std::string& err,
+                    bool visible) {
     width_ = width;
     height_ = height;
     ssaa_ = ssaa;
@@ -164,12 +169,19 @@ bool Renderer::init(int width, int height, int ssaa,
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // offscreen
+    glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
+    // The FBO pipeline is a fixed size; let the blit in present() scale to the
+    // window (and any Retina backing scale) instead of reallocating on resize.
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    GLFWwindow* win = glfwCreateWindow(64, 64, "fractal", nullptr, nullptr);
+    const int win_w = visible ? width : 64, win_h = visible ? height : 64;
+    GLFWwindow* win = glfwCreateWindow(win_w, win_h,
+                                       visible ? "fractalscape explorer" : "fractal",
+                                       nullptr, nullptr);
     if (!win) { err = "failed to create GL context"; glfwTerminate(); return false; }
     window_ = win;
     glfwMakeContextCurrent(win);
+    if (visible) glfwSwapInterval(1); // vsync
 
     // Load and link shader programs.
     const std::string dir = findShaderDir(shader_dir);
@@ -240,6 +252,12 @@ static void setUniformDF(unsigned int p, const char* n, double v) {
     glUniform2f(glGetUniformLocation(p, n), hi, lo);
 }
 
+// Edge length (supersampled px) of one deep-zoom render tile. Small enough that
+// one tile * max_iter df64 iterations stays well under the macOS GPU watchdog
+// window; large enough that per-tile dispatch overhead stays negligible. 512
+// keeps even a 12000^2 (3000px @ ssaa 4) deep still safe in ~550 tiles.
+static constexpr int kDeepTile = 512;
+
 void Renderer::render(const RenderConfig& cfg) {
     const int hw = width_ * ssaa_, hh = height_ * ssaa_;
 
@@ -257,7 +275,8 @@ void Renderer::render(const RenderConfig& cfg) {
         setUniformDF(deep_prog_, "uCenterDX", cfg.center_x);
         setUniformDF(deep_prog_, "uCenterDY", cfg.center_y);
         setUniformDF(deep_prog_, "uScaleD",   cfg.scale);
-        setUniform2f(deep_prog_, "uJuliaC", (float)cfg.julia_cre, (float)cfg.julia_cim);
+        setUniformDF(deep_prog_, "uJuliaCX", cfg.julia_cre);
+        setUniformDF(deep_prog_, "uJuliaCY", cfg.julia_cim);
         setUniform1i(deep_prog_, "uType", cfg.type == FractalType::Mandelbrot ? 0 : 1);
         setUniform1i(deep_prog_, "uMaxIter", cfg.max_iter);
         setUniform1f(deep_prog_, "uBailout", (float)cfg.bailout);
@@ -268,7 +287,26 @@ void Renderer::render(const RenderConfig& cfg) {
         setUniform1f(deep_prog_, "uStripeFreq", (float)cfg.stripe_freq);
         setUniform1f(deep_prog_, "uStripeContrast", (float)cfg.stripe_contrast);
         setUniform3f(deep_prog_, "uInsideColor", cfg.inside_color.r, cfg.inside_color.g, cfg.inside_color.b);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        // The df64 path is ~20x the cost of the float path and, at depth, runs
+        // the full max_iter on nearly every pixel. A single fullscreen draw over
+        // the whole supersampled target can occupy the GPU for many seconds --
+        // long enough to trip the macOS GPU watchdog, which preempts/resets the
+        // shared GPU and freezes the display (looks like a system hang). Split
+        // the draw into viewport tiles with a flush between each so no single
+        // command buffer monopolizes the GPU. gl_FragCoord stays in global
+        // window space and uResolution is the full (hw,hh), so each tile shades
+        // exactly the pixels it would have in one pass -- output is bit-identical,
+        // just chunked. The float path is cheap enough to leave as one draw.
+        for (int ty = 0; ty < hh; ty += kDeepTile) {
+            const int th = std::min(kDeepTile, hh - ty);
+            for (int tx = 0; tx < hw; tx += kDeepTile) {
+                const int tw = std::min(kDeepTile, hw - tx);
+                glViewport(tx, ty, tw, th);
+                glDrawArrays(GL_TRIANGLES, 0, 3);
+                glFlush(); // close this command buffer; let the GPU breathe
+            }
+        }
         read_fbo_ = fbo_lo_; read_tex_ = tex_lo_; // (overwritten by downsample below)
         goto resolve;
     }
@@ -416,6 +454,21 @@ std::vector<uint8_t> Renderer::readPixels() {
         std::copy(row.begin(), row.end(), bot);
     }
     return buf;
+}
+
+void Renderer::present() {
+    if (!window_) return;
+    GLFWwindow* win = static_cast<GLFWwindow*>(window_);
+    int fbw = width_, fbh = height_;
+    glfwGetFramebufferSize(win, &fbw, &fbh); // pixels (>= window size on Retina)
+
+    // Blit the last-written FBO straight to the window's default framebuffer,
+    // scaling to fill. Both are GL bottom-up, so no flip is needed on screen.
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, read_fbo_ ? read_fbo_ : fbo_lo_);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, width_, height_, 0, 0, fbw, fbh,
+                      GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    glfwSwapBuffers(win);
 }
 
 } // namespace fractal

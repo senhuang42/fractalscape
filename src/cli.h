@@ -11,13 +11,20 @@
 
 namespace fractal {
 
-enum class CommandKind { None, Help, Render, Video };
+enum class CommandKind { None, Help, Render, Video, Buddha, Explore, Center };
 
 struct ParsedArgs {
     CommandKind  kind = CommandKind::None;
-    RenderConfig render; // valid when kind == Render
-    VideoConfig  video;  // valid when kind == Video
-    std::string  error;  // non-empty => parse failure (kind is unreliable)
+    RenderConfig render;  // valid when kind == Render / Buddha / Explore / Center
+    VideoConfig  video;   // valid when kind == Video
+    std::string  error;   // non-empty => parse failure (kind is unreliable)
+
+    // Center-command parameters (kind == Center). The guess is render.center_*,
+    // the Julia constant render.julia_c*, and the search radius render.scale.
+    int  max_period = 128; // largest period to search
+    int  find_period = 0;  // 0 = auto-search; else force this period
+    bool misiurewicz = false; // Mandelbrot: find a Misiurewicz point, not a nucleus
+    int  max_preperiod = 48;  // largest preperiod to search (Misiurewicz)
 };
 
 // Parse argv (excluding program name). The first token selects the subcommand

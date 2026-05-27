@@ -36,3 +36,5 @@ extern const char* g_current; // current test name, for context
 void test_palette();
 void test_fractal_math();
 void test_cli();
+void test_buddhabrot();
+void test_periodic();

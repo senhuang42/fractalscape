@@ -23,9 +23,12 @@ public:
 
     // Create the context and GPU resources for a `width`x`height` output with
     // the given supersampling factor. `shader_dir` may be empty to auto-search.
+    // When `visible` is true the GLFW window is shown (for the interactive
+    // explorer) and vsync is enabled; otherwise the context is offscreen.
     // Returns false and fills `err` on failure.
     bool init(int width, int height, int ssaa,
-              const std::string& shader_dir, std::string& err);
+              const std::string& shader_dir, std::string& err,
+              bool visible = false);
 
     // Upload the gradient (RGB8, `resolution` texels) as the palette texture.
     void setPalette(const std::vector<uint8_t>& rgb, int resolution);
@@ -35,6 +38,13 @@ public:
 
     // Resolved image as RGB8, row-major with the top row first (PNG order).
     std::vector<uint8_t> readPixels();
+
+    // Interactive explorer support. `present()` blits the last rendered frame
+    // to the window and swaps buffers; `window()` exposes the GLFWwindow* (as a
+    // void*) so the explorer can poll input. Only meaningful after init(...,
+    // visible=true).
+    void  present();
+    void* window() const { return window_; }
 
     int width()  const { return width_; }
     int height() const { return height_; }

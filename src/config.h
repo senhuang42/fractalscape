@@ -77,6 +77,22 @@ struct RenderConfig {
     // the quadratic SAC path only (no formula variants / lighting / kaleido).
     bool   deep = false;
 
+    // --- Buddhabrot / Nebulabrot (the `buddhabrot` command) ---
+    // A density rendering of *escaping* orbit trajectories rather than escape
+    // time: random seed points are iterated, and the path of every point that
+    // escapes is splatted into an accumulation buffer. Interior orbits are
+    // discarded, which is what produces the ghostly nebula. `samples` is the
+    // budget of random seeds in millions (the quality/time lever). Nebula mode
+    // renders three iteration thresholds into R/G/B (the classic Nebulabrot);
+    // otherwise the single-channel density is colored through the palette.
+    // CPU-only and quadratic-only (it needs scatter writes that macOS GL lacks).
+    double samples      = 30.0;   // millions of random seed points
+    bool   nebula       = false;  // RGB Nebulabrot vs palette-mapped density
+    int    nebula_r     = 5000;   // R max-iter (faint long-lived outer wisps)
+    int    nebula_g     = 500;    // G max-iter (mid structure)
+    int    nebula_b     = 50;     // B max-iter (bright fast-escape core)
+    double buddha_gamma = 2.2;    // tone curve on the normalized density
+
     // Output image size in pixels (pre-supersampling).
     int width  = 1600;
     int height = 1600;
@@ -161,6 +177,12 @@ struct VideoConfig : RenderConfig {
     double   duration = 20.0; // seconds
     int      fps      = 30;
     int      crf      = 18;   // x264 quality (lower = better)
+
+    // Palette sweep overlaid on ANY mode: adds this many full color cycles over
+    // the clip (so you can cycle colors while zooming, like loop_cycle does on
+    // its own). 0 = off. Best with a cyclic palette so the sweep is seamless;
+    // the parser turns on cyclic automatically when this is set.
+    double color_cycles = 0.0;
 
     // Rotate mode: |c| stays fixed at this radius.
     double rotate_radius = 0.7885;

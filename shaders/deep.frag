@@ -17,7 +17,8 @@ uniform float uBailout;
 uniform vec2  uCenterDX;       // df: view center x (hi, lo)
 uniform vec2  uCenterDY;       // df: view center y (hi, lo)
 uniform vec2  uScaleD;         // df: half-height scale (hi, lo)
-uniform vec2  uJuliaC;         // Julia constant (normal magnitude)
+uniform vec2  uJuliaCX;        // df: Julia constant real part (hi, lo)
+uniform vec2  uJuliaCY;        // df: Julia constant imag part (hi, lo)
 uniform sampler2D uPalette;
 uniform float uColorDensity;
 uniform float uColorOffset;
@@ -62,7 +63,9 @@ void main() {
         x = vec2(0.0); y = vec2(0.0);
     } else {                          // Julia: z0 = center + offset, c = const
         x = dfAdd(uCenterDX, ox); y = dfAdd(uCenterDY, oy);
-        cx = vec2(uJuliaC.x, 0.0); cy = vec2(uJuliaC.y, 0.0);
+        // c carried in df64 too: at deep zoom a float-precision c (~1e-7) would
+        // be injected every iteration and cap Julia zooms at ~1e-7.
+        cx = uJuliaCX; cy = uJuliaCY;
     }
 
     float bail2 = uBailout * uBailout;

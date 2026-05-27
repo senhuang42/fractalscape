@@ -1,8 +1,11 @@
 // main.cpp — CLI entry point. Ties together argument parsing, gradient
 // generation, the GPU renderer, PNG output, and MP4 export via ffmpeg.
 
+#include "buddhabrot.h"
 #include "cli.h"
+#include "explorer.h"
 #include "palette.h"
+#include "periodic.h"
 #include "renderer.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -53,6 +56,99 @@ int runRender(const fractal::RenderConfig& cfg) {
     return 0;
 }
 
+int runBuddhabrot(const fractal::RenderConfig& cfg) {
+    std::cout << "buddhabrot: " << (cfg.nebula ? "nebula " : "")
+              << cfg.samples << "M samples @ " << cfg.width << "x" << cfg.height
+              << " (" << std::thread::hardware_concurrency() << " threads)\n";
+    auto progress = [](float f) {
+        std::printf("\r  %.0f%%", 100.0f * f);
+        std::fflush(stdout);
+    };
+    auto pixels = fractal::renderBuddhabrot(cfg, progress);
+    std::printf("\n");
+
+    if (!stbi_write_png(cfg.output.c_str(), cfg.width, cfg.height, 3,
+                        pixels.data(), cfg.width * 3)) {
+        std::cerr << "error: failed to write " << cfg.output << "\n";
+        return 1;
+    }
+    std::cout << "wrote " << cfg.output << "\n";
+    return 0;
+}
+
+int runExplore(const fractal::RenderConfig& cfg) {
+    return fractal::runExplorer(cfg, shaderDirFromEnv());
+}
+
+int runCenter(const fractal::ParsedArgs& a) {
+    const fractal::RenderConfig& cfg = a.render;
+    const bool mandel = cfg.type == fractal::FractalType::Mandelbrot;
+    const bool misiu  = mandel && a.misiurewicz;
+    const fractal::cdouble guess(cfg.center_x, cfg.center_y);
+
+    fractal::PeriodicPoint best;
+    if (misiu) {
+        best = fractal::findMisiurewicz(guess, a.max_preperiod, a.max_period, cfg.scale);
+    } else if (a.find_period > 0) {
+        best = mandel ? fractal::mandelNucleusNewton(guess, a.find_period)
+                      : fractal::juliaPeriodicNewton(
+                            fractal::cdouble(cfg.julia_cre, cfg.julia_cim),
+                            guess, a.find_period);
+        best.dist = std::abs(best.point - guess);
+        if (!best.converged) best.period = 0; // signal failure below
+    } else {
+        best = fractal::findCenter(cfg, guess, a.max_period, cfg.scale);
+    }
+
+    const char* kind = misiu ? "Misiurewicz point"
+                      : mandel ? "nucleus" : "repelling periodic point";
+    if (best.period == 0) {
+        std::cerr << "no " << kind << " found within radius " << cfg.scale
+                  << " of the guess (try a larger --max-period"
+                  << (misiu ? "/--max-preperiod" : "") << " or --scale, "
+                  << "or re-aim the guess)\n";
+        return 1;
+    }
+
+    if (misiu) std::printf("%s, preperiod %d period %d\n", kind, best.preperiod, best.period);
+    else       std::printf("%s, period %d\n", kind, best.period);
+    std::printf("  center-x  %.16g\n", best.point.real());
+    std::printf("  center-y  %.16g\n", best.point.imag());
+    std::printf("  |multiplier|  %.6g", best.abs_lambda);
+    if (!mandel || misiu) {
+        // For a logarithmic spiral the multiplier's argument is the rotation per
+        // period and |multiplier| the zoom factor per period -- handy context.
+        std::printf("   (spiral: x%.4g and %.1f deg per period %d)",
+                    best.abs_lambda,
+                    std::arg(best.lambda) * 180.0 / M_PI, best.period);
+    }
+    std::printf("\n  distance from guess  %.3g\n", best.dist);
+
+    // A ready-to-run deep zoom into the refined center.
+    char cmd[512];
+    if (mandel) {
+        std::snprintf(cmd, sizeof cmd,
+            "fractal video -t mandelbrot --mode zoom --deep -i 40000 "
+            "--center-x %.16g --center-y %.16g "
+            "--zoom-target-x %.16g --zoom-target-y %.16g "
+            "--scale 0.2 --zoom-end %s -o zoom.mp4",
+            best.point.real(), best.point.imag(),
+            best.point.real(), best.point.imag(),
+            misiu ? "5e-13" : "1e-7");
+    } else {
+        std::snprintf(cmd, sizeof cmd,
+            "fractal video --mode zoom --deep -i 30000 --cre %.10g --cim %.10g "
+            "--center-x %.16g --center-y %.16g "
+            "--zoom-target-x %.16g --zoom-target-y %.16g "
+            "--scale 0.1 --zoom-end 1e-12 -o zoom.mp4",
+            cfg.julia_cre, cfg.julia_cim,
+            best.point.real(), best.point.imag(),
+            best.point.real(), best.point.imag());
+    }
+    std::printf("\n%s\n", cmd);
+    return 0;
+}
+
 // Compute the per-frame config for a given animation frame in [0, total).
 fractal::RenderConfig frameConfig(const fractal::VideoConfig& v, int frame) {
     fractal::RenderConfig c = static_cast<fractal::RenderConfig>(v);
@@ -91,6 +187,12 @@ fractal::RenderConfig frameConfig(const fractal::VideoConfig& v, int frame) {
             break;
         }
     }
+
+    // Optional palette sweep layered on top of whatever the mode did. Lets a
+    // zoom (or any mode) cycle colors as it runs; an integer count keeps a loop
+    // seamless since color_offset is taken mod 1 when sampling the gradient.
+    if (v.color_cycles != 0.0) c.color_offset += v.color_cycles * u;
+
     return c;
 }
 
@@ -216,6 +318,12 @@ int main(int argc, char** argv) {
             return runRender(parsed.render);
         case fractal::CommandKind::Video:
             return runVideo(parsed.video);
+        case fractal::CommandKind::Buddha:
+            return runBuddhabrot(parsed.render);
+        case fractal::CommandKind::Explore:
+            return runExplore(parsed.render);
+        case fractal::CommandKind::Center:
+            return runCenter(parsed);
         default:
             std::cout << fractal::helpText();
             return 0;

@@ -4,6 +4,7 @@
 *.dSYM/
 /fractal
 /run_tests
+/FractalScape.app/
 
 # Rendered output
 *.png
