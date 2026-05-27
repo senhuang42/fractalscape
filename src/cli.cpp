@@ -175,6 +175,8 @@ COMMON OPTIONS
       --height <int>              Image height px           (default: 1600)
       --size <WxH>                Set width and height at once
       --ssaa <int>                Supersampling factor      (default: 4)
+      --deep                      Double-float precision for zooms past ~1e4
+                                  (quadratic SAC path only; slower)
   -p, --palette <spec>            Named palette or hex list (default: noir)
       --cyclic                    Loop the gradient (ramps are open by default)
       --stripe-color <float>      Stripe overlay weight 0..1(default: 1.0)
@@ -375,6 +377,7 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "--vignette")   { if (!cur.nextDouble(flag, cfg.vignette)) break; }
         else if (flag == "--grain")      { if (!cur.nextDouble(flag, cfg.grain)) break; }
         else if (flag == "--scanlines")  { if (!cur.nextDouble(flag, cfg.scanlines)) break; }
+        else if (flag == "--deep")       { cfg.deep = true; }
         else if (flag == "-o" || flag == "--output") {
             if (!cur.nextStr(flag, cfg.output)) break;
             output_set = true;

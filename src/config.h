@@ -72,6 +72,11 @@ struct RenderConfig {
     double exponent   = 2.0;     // z^exponent + c
     double bailout    = 10000.0; // escape radius; large for smooth SAC/iteration
 
+    // Deep zoom: iterate in emulated double-float (df64) precision instead of
+    // 32-bit float, which pushes the pixelation limit from ~1e4 to ~1e13. Uses
+    // the quadratic SAC path only (no formula variants / lighting / kaleido).
+    bool   deep = false;
+
     // Output image size in pixels (pre-supersampling).
     int width  = 1600;
     int height = 1600;

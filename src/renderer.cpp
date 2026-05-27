@@ -142,6 +142,7 @@ Renderer::~Renderer() {
         if (bloom_prog_)      glDeleteProgram(bloom_prog_);
         if (composite_prog_)  glDeleteProgram(composite_prog_);
         if (post_prog_)       glDeleteProgram(post_prog_);
+        if (deep_prog_)       glDeleteProgram(deep_prog_);
         glfwDestroyWindow(static_cast<GLFWwindow*>(window_));
         glfwTerminate();
     }
@@ -155,9 +156,12 @@ bool Renderer::init(int width, int height, int ssaa,
 
     if (!glfwInit()) { err = "glfwInit failed (no display/GL available?)"; return false; }
 
-    // Request OpenGL 3.3 core, forward-compatible (required on macOS).
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    // Request OpenGL 4.1 core, forward-compatible (the max macOS exposes). 4.1
+    // is needed for the `precise` qualifier in deep.frag, which stops the driver
+    // from fusing the double-float error-free transforms. The other shaders are
+    // #version 330 and compile fine under a 4.1 core context.
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // offscreen
@@ -174,14 +178,15 @@ bool Renderer::init(int width, int height, int ssaa,
               "pass --shader-dir";
         return false;
     }
-    bool ok1 = false, ok2 = false, ok3 = false, ok4 = false, ok5 = false, ok6 = false;
+    bool ok1 = false, ok2 = false, ok3 = false, ok4 = false, ok5 = false, ok6 = false, ok7 = false;
     std::string vsrc  = readFile(dir + "/fullscreen.vert", ok1);
     std::string fsrc  = readFile(dir + "/fractal.frag", ok2);
     std::string dssrc = readFile(dir + "/downsample.frag", ok3);
     std::string blsrc = readFile(dir + "/bloom.frag", ok4);
     std::string cmsrc = readFile(dir + "/composite.frag", ok5);
     std::string ptsrc = readFile(dir + "/post.frag", ok6);
-    if (!ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6) { err = "failed to read shader files from " + dir; return false; }
+    std::string dpsrc = readFile(dir + "/deep.frag", ok7);
+    if (!ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7) { err = "failed to read shader files from " + dir; return false; }
 
     fractal_prog_ = linkProgram(vsrc, fsrc, err);
     if (!fractal_prog_) return false;
@@ -193,6 +198,8 @@ bool Renderer::init(int width, int height, int ssaa,
     if (!composite_prog_) return false;
     post_prog_ = linkProgram(vsrc, ptsrc, err);
     if (!post_prog_) return false;
+    deep_prog_ = linkProgram(vsrc, dpsrc, err);
+    if (!deep_prog_) return false;
 
     glGenVertexArrays(1, &vao_); // empty VAO required by core profile
 
@@ -226,17 +233,47 @@ void Renderer::setPalette(const std::vector<uint8_t>& rgb, int resolution) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }
 
+// Split a double into a high/low float pair (df64) for the deep-zoom shader.
+static void setUniformDF(unsigned int p, const char* n, double v) {
+    float hi = (float)v;
+    float lo = (float)(v - (double)hi);
+    glUniform2f(glGetUniformLocation(p, n), hi, lo);
+}
+
 void Renderer::render(const RenderConfig& cfg) {
     const int hw = width_ * ssaa_, hh = height_ * ssaa_;
 
     // --- Pass 1: fractal at supersampled resolution ---
     glBindFramebuffer(GL_FRAMEBUFFER, fbo_hi_);
     glViewport(0, 0, hw, hh);
-    glUseProgram(fractal_prog_);
     glBindVertexArray(vao_);
-
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, palette_tex_);
+
+    if (cfg.deep) {
+        // Deep zoom: emulated double-float iteration (quadratic SAC path only).
+        glUseProgram(deep_prog_);
+        setUniform2f(deep_prog_, "uResolution", (float)hw, (float)hh);
+        setUniformDF(deep_prog_, "uCenterDX", cfg.center_x);
+        setUniformDF(deep_prog_, "uCenterDY", cfg.center_y);
+        setUniformDF(deep_prog_, "uScaleD",   cfg.scale);
+        setUniform2f(deep_prog_, "uJuliaC", (float)cfg.julia_cre, (float)cfg.julia_cim);
+        setUniform1i(deep_prog_, "uType", cfg.type == FractalType::Mandelbrot ? 0 : 1);
+        setUniform1i(deep_prog_, "uMaxIter", cfg.max_iter);
+        setUniform1f(deep_prog_, "uBailout", (float)cfg.bailout);
+        setUniform1i(deep_prog_, "uPalette", 0);
+        setUniform1f(deep_prog_, "uColorDensity", (float)cfg.color_density);
+        setUniform1f(deep_prog_, "uColorOffset", (float)cfg.color_offset);
+        setUniform1f(deep_prog_, "uStripeColor", (float)cfg.stripe_color);
+        setUniform1f(deep_prog_, "uStripeFreq", (float)cfg.stripe_freq);
+        setUniform1f(deep_prog_, "uStripeContrast", (float)cfg.stripe_contrast);
+        setUniform3f(deep_prog_, "uInsideColor", cfg.inside_color.r, cfg.inside_color.g, cfg.inside_color.b);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        read_fbo_ = fbo_lo_; read_tex_ = tex_lo_; // (overwritten by downsample below)
+        goto resolve;
+    }
+
+    glUseProgram(fractal_prog_);
 
     setUniform2f(fractal_prog_, "uResolution", (float)hw, (float)hh);
     setUniform2f(fractal_prog_, "uCenter", (float)cfg.center_x, (float)cfg.center_y);
@@ -271,6 +308,7 @@ void Renderer::render(const RenderConfig& cfg) {
 
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
+resolve:
     // --- Pass 2: gamma-correct downsample to output resolution ---
     glBindFramebuffer(GL_FRAMEBUFFER, fbo_lo_);
     glViewport(0, 0, width_, height_);

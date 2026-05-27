@@ -143,6 +143,11 @@ void test_cli() {
         CHECK(parse({"render", "-P", "newton"}).render.formula == Formula::Newton);
         CHECK(parse({"render", "-P", "phoenix"}).render.formula == Formula::Phoenix);
     }
+    {
+        // deep zoom flag
+        CHECK(!parse({"render"}).render.deep);
+        CHECK(parse({"render", "--deep"}).render.deep);
+    }
     CHECK(!parse({"render", "-P", "bogus"}).error.empty());
 
     // ---- error handling ----

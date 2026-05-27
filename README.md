@@ -96,8 +96,23 @@ The iteration layer gates the stripe layer so empty gaps stay black.
 default. Optional Blinn-Phong height-field lighting, linear-light supersampling,
 and an [iq distance estimate](https://iquilezles.org/articles/distancefractals/)
 are also available. Palettes are dark-to-bright ramps (`fractal help` lists
-them). Deep zooms pixelate past roughly 10,000x because the shader is 32-bit
-float.
+them).
+
+## Deep zoom
+
+The shader iterates in 32-bit float, which pixelates past roughly 10,000x.
+`--deep` switches the quadratic path to emulated double-float (df64) precision
+and stays sharp to about 1e12 (a million times deeper). It is slower and covers
+the quadratic Mandelbrot/Julia SAC path only. Unbounded precision beyond df64
+would need perturbation with a higher-precision reference orbit, which is not
+implemented.
+
+```sh
+fractal render -t mandelbrot --center-x -0.743643887037151 \
+  --center-y 0.131825904205330 --scale 1e-11 -i 3000 --deep -p magma -o deep.png
+```
+
+![10^11x deep zoom](assets/deep_zoom.png)
 
 ## Credits
 

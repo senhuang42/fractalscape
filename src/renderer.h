@@ -47,6 +47,7 @@ private:
     unsigned int bloom_prog_      = 0;
     unsigned int composite_prog_  = 0;
     unsigned int post_prog_       = 0;
+    unsigned int deep_prog_       = 0;
     unsigned int vao_             = 0;
     unsigned int palette_tex_     = 0;
 

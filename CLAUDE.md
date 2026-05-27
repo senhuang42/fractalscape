@@ -127,9 +127,19 @@ make test                    # -> ./run_tests (GL-free unit tests)
   highlight, and leave `saturation` at the default 1.3.
 - **Palettes** are dark→bright ramps in `palette.cpp`; restrained ones keep
   detail coherent, wider-gamut ones (sunset/neon/prism/etc.) are vibrant.
-- **Zoom videos**: shader is 32-bit float -> pixelates past ~1e4×. Keep the
-  target on a detail-rich exterior point at ALL scales (probe with stills) or
-  the path crosses black set-interior bodies. -0.7453,0.1127 works to ~0.0013.
+- **Zoom videos**: the default path is 32-bit float -> pixelates past ~1e4×.
+  Keep the target on a detail-rich exterior point at ALL scales (probe with
+  stills) or the path crosses black set-interior bodies. -0.7453,0.1127 works
+  to ~0.0013.
+- **`--deep` (deep zoom)**: `deep.frag` iterates in emulated double-float (df64,
+  a hi+lo float pair) instead of float, holding sharp to ~1e12 (verified) before
+  it softens near df64's ~14 digits. Quadratic Mandelbrot/Julia SAC path only.
+  THE gotcha: df64's error-free transforms collapse to plain float unless the
+  driver is forbidden from fusing/reordering them. That needs the GLSL `precise`
+  qualifier, which is 4.00+, so the GL context is requested at **4.1** (max on
+  macOS; the 330 shaders still compile under it). Without `precise` the deep
+  path pixelates identically to float -- looks like a no-op. True unbounded
+  precision would need perturbation + a bignum reference orbit (not done).
 - Video uses lower default SSAA (2) than stills (4) because it renders hundreds
   of frames. x264 + yuv420p needs even dimensions (handled in `runVideo`).
 - **Rendering is GPU-compute-bound, dominated by iteration count, not I/O.**
