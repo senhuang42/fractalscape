@@ -105,6 +105,22 @@ struct RenderConfig {
     double bloom           = 0.3;
     double bloom_threshold = 0.5;
 
+    // --- Album-art / design layer (all off by default) ---
+    // Kaleidoscope: fold the view into N mirrored wedges around the image
+    // center before the fractal math, for a radially-symmetric mandala. 0 = off
+    // (any value < 2 is treated as off). Fractional values are fine.
+    double kaleido       = 0.0;
+    double kaleido_angle = 0.0;  // rotate the symmetry, degrees
+    // Chromatic aberration: split RGB along the radius in the final pass, so
+    // bright edges fringe into neon. Value is the max channel offset in pixels.
+    double aberration    = 0.0;
+    // Vignette: darken toward the corners to seat the focal point. 0..1.
+    double vignette      = 0.0;
+    // Film grain: additive noise so flat areas read as texture, not plastic.
+    double grain         = 0.0;
+    // Scanlines: horizontal CRT lines for a glitch/cyber look. 0..1.
+    double scanlines     = 0.0;
+
     // `glow` lights the thin filaments using a distance estimate.
     double glow         = 0.0;   // 0 = off
     // `falloff` fades the exterior toward inside_color by distance to the set.

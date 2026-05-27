@@ -132,15 +132,16 @@ void setUniform3f(unsigned int p, const char* n, float a, float b, float c) { gl
 Renderer::~Renderer() {
     if (window_) {
         if (palette_tex_)     glDeleteTextures(1, &palette_tex_);
-        for (unsigned int t : {tex_hi_, tex_lo_, tex_b0_, tex_b1_, tex_out_})
+        for (unsigned int t : {tex_hi_, tex_lo_, tex_b0_, tex_b1_, tex_out_, tex_post_})
             if (t) glDeleteTextures(1, &t);
-        for (unsigned int f : {fbo_hi_, fbo_lo_, fbo_b0_, fbo_b1_, fbo_out_})
+        for (unsigned int f : {fbo_hi_, fbo_lo_, fbo_b0_, fbo_b1_, fbo_out_, fbo_post_})
             if (f) glDeleteFramebuffers(1, &f);
         if (vao_)             glDeleteVertexArrays(1, &vao_);
         if (fractal_prog_)    glDeleteProgram(fractal_prog_);
         if (downsample_prog_) glDeleteProgram(downsample_prog_);
         if (bloom_prog_)      glDeleteProgram(bloom_prog_);
         if (composite_prog_)  glDeleteProgram(composite_prog_);
+        if (post_prog_)       glDeleteProgram(post_prog_);
         glfwDestroyWindow(static_cast<GLFWwindow*>(window_));
         glfwTerminate();
     }
@@ -173,13 +174,14 @@ bool Renderer::init(int width, int height, int ssaa,
               "pass --shader-dir";
         return false;
     }
-    bool ok1 = false, ok2 = false, ok3 = false, ok4 = false, ok5 = false;
+    bool ok1 = false, ok2 = false, ok3 = false, ok4 = false, ok5 = false, ok6 = false;
     std::string vsrc  = readFile(dir + "/fullscreen.vert", ok1);
     std::string fsrc  = readFile(dir + "/fractal.frag", ok2);
     std::string dssrc = readFile(dir + "/downsample.frag", ok3);
     std::string blsrc = readFile(dir + "/bloom.frag", ok4);
     std::string cmsrc = readFile(dir + "/composite.frag", ok5);
-    if (!ok1 || !ok2 || !ok3 || !ok4 || !ok5) { err = "failed to read shader files from " + dir; return false; }
+    std::string ptsrc = readFile(dir + "/post.frag", ok6);
+    if (!ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6) { err = "failed to read shader files from " + dir; return false; }
 
     fractal_prog_ = linkProgram(vsrc, fsrc, err);
     if (!fractal_prog_) return false;
@@ -189,6 +191,8 @@ bool Renderer::init(int width, int height, int ssaa,
     if (!bloom_prog_) return false;
     composite_prog_ = linkProgram(vsrc, cmsrc, err);
     if (!composite_prog_) return false;
+    post_prog_ = linkProgram(vsrc, ptsrc, err);
+    if (!post_prog_) return false;
 
     glGenVertexArrays(1, &vao_); // empty VAO required by core profile
 
@@ -198,9 +202,11 @@ bool Renderer::init(int width, int height, int ssaa,
     if (!makeTarget(width_, height_, fbo_b0_, tex_b0_, err)) return false;
     if (!makeTarget(width_, height_, fbo_b1_, tex_b1_, err)) return false;
     if (!makeTarget(width_, height_, fbo_out_, tex_out_, err)) return false;
+    if (!makeTarget(width_, height_, fbo_post_, tex_post_, err)) return false;
 
-    // Linear filtering for textures sampled with texture() (resolve + bloom).
-    for (unsigned int t : {tex_hi_, tex_lo_, tex_b0_, tex_b1_}) {
+    // Linear filtering for textures sampled with texture() (resolve + bloom +
+    // post; aberration in particular samples between texels).
+    for (unsigned int t : {tex_hi_, tex_lo_, tex_b0_, tex_b1_, tex_out_}) {
         glBindTexture(GL_TEXTURE_2D, t);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -258,6 +264,8 @@ void Renderer::render(const RenderConfig& cfg) {
     setUniform1f(fractal_prog_, "uHeightScale", (float)cfg.height_scale);
     setUniform1f(fractal_prog_, "uGlow", (float)cfg.glow);
     setUniform1f(fractal_prog_, "uFalloff", (float)cfg.falloff);
+    setUniform1f(fractal_prog_, "uKaleido", (float)cfg.kaleido);
+    setUniform1f(fractal_prog_, "uKaleidoAngle", (float)(cfg.kaleido_angle * M_PI / 180.0));
 
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
@@ -278,6 +286,7 @@ void Renderer::render(const RenderConfig& cfg) {
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
     read_fbo_ = fbo_lo_;
+    read_tex_ = tex_lo_;
 
     // --- Bloom: bright-pass + separable blur, screen-composited back ---
     if (cfg.bloom > 0.0) {
@@ -320,9 +329,34 @@ void Renderer::render(const RenderConfig& cfg) {
         glActiveTexture(GL_TEXTURE0);
 
         read_fbo_ = fbo_out_;
+        read_tex_ = tex_out_;
     }
 
-    glFinish();
+    // --- Post: chromatic aberration + vignette + scanlines + grain ---
+    // Only run when something is active; otherwise it's an identity copy.
+    const bool wantPost = cfg.aberration > 0.0 || cfg.vignette > 0.0 ||
+                          cfg.grain > 0.0 || cfg.scanlines > 0.0;
+    if (wantPost) {
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo_post_);
+        glViewport(0, 0, width_, height_);
+        glUseProgram(post_prog_);
+        glBindVertexArray(vao_);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, read_tex_);
+        setUniform1i(post_prog_, "uTex", 0);
+        setUniform2f(post_prog_, "uTexSize", (float)width_, (float)height_);
+        setUniform1f(post_prog_, "uAberration", (float)cfg.aberration);
+        setUniform1f(post_prog_, "uVignette", (float)cfg.vignette);
+        setUniform1f(post_prog_, "uScanlines", (float)cfg.scanlines);
+        setUniform1f(post_prog_, "uGrain", (float)cfg.grain);
+        setUniform1f(post_prog_, "uSeed", (float)cfg.color_offset * 977.0f);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        read_fbo_ = fbo_post_;
+        read_tex_ = tex_post_;
+    }
+    // No glFinish() here: the subsequent glReadPixels already forces a sync,
+    // so an explicit finish would just be a redundant full-pipeline flush.
 }
 
 std::vector<uint8_t> Renderer::readPixels() {

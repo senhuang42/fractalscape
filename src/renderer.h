@@ -46,6 +46,7 @@ private:
     unsigned int downsample_prog_ = 0;
     unsigned int bloom_prog_      = 0;
     unsigned int composite_prog_  = 0;
+    unsigned int post_prog_       = 0;
     unsigned int vao_             = 0;
     unsigned int palette_tex_     = 0;
 
@@ -54,7 +55,9 @@ private:
     unsigned int fbo_b0_ = 0, tex_b0_ = 0; // bloom ping
     unsigned int fbo_b1_ = 0, tex_b1_ = 0; // bloom pong
     unsigned int fbo_out_ = 0, tex_out_ = 0; // composited output
+    unsigned int fbo_post_ = 0, tex_post_ = 0; // post-processed output
     unsigned int read_fbo_ = 0;            // which FBO readPixels samples
+    unsigned int read_tex_ = 0;            // texture attached to read_fbo_
 
     void* window_ = nullptr; // GLFWwindow*
 };

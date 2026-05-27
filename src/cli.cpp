@@ -74,6 +74,35 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
     else if (name == "rosegold")       julia(-0.512511, 0.521295, 1.30, 2000, "rosegold");
     else if (name == "galaxy")         julia(-0.123,    0.745,    1.40, 2000, "galaxy");
     else if (name == "mint")           julia(-0.70176, -0.3842,   1.20, 3000, "mint");
+    // Trippy fuchsia/teal on the full default Julia spiral. The CYCLIC prism
+    // palette is the key: it sweeps the stripe relief through teal -> violet ->
+    // fuchsia and loops, so both complements show strongly instead of the image
+    // sitting in one hue. Higher stripe frequency packs in more bands.
+    else if (name == "acid-swirl")   { julia(-0.512511, 0.521295, 1.30, 2000, "prism"); c.cyclic = true; c.stripe_freq = 9.0; }
+    // Album-art covers (square, vice palette) -- one per design mode. Render big
+    // for the final, e.g. `-P cover-mandala --size 3000x3000`.
+    else if (name == "cover-mandala") { // N-fold radial symmetry -> mandala
+        julia(-0.512511, 0.521295, 1.30, 1500, "vice");
+        c.cyclic = true; c.stripe_freq = 8.0; c.stripe_contrast = 3.0;
+        c.kaleido = 8.0;
+        c.bloom = 0.45; c.vignette = 0.45; c.grain = 0.03;
+    }
+    else if (name == "cover-hero") {    // one deep spiral eye, cinematic
+        mandel(-0.74364388703, 0.13182590421, 1.35 / 120.0, 2200, "vice");
+        c.cyclic = true; c.bloom = 0.35; c.aberration = 2.0;
+        c.vignette = 0.5; c.grain = 0.03;
+    }
+    else if (name == "cover-glitch") {  // hard RGB-split + scanlines
+        julia(-0.512511, 0.521295, 1.30, 1500, "vice");
+        c.cyclic = true; c.stripe_freq = 8.0; c.stripe_contrast = 3.2;
+        c.aberration = 24.0; c.scanlines = 0.5; c.vignette = 0.35;
+        c.grain = 0.05; c.bloom = 0.4;
+    }
+    else if (name == "cover-cosmic") {  // soft glowing nebula
+        julia(-0.512511, 0.521295, 1.42, 1200, "vice");
+        c.cyclic = true; c.bloom = 0.75; c.bloom_threshold = 0.35;
+        c.vignette = 0.4; c.grain = 0.025;
+    }
     else return false;
     return true;
 }
@@ -84,7 +113,8 @@ const std::vector<std::string>& presetNames() {
         "noir-spiral", "frostbite", "molten", "deep-ocean", "dusk",
         "neon-dust", "viridian", "candy-swirl", "ember-seahorse", "inferno-valley",
         "synthwave", "nord", "dracula", "gruvbox", "autumn", "rosegold",
-        "galaxy", "mint",
+        "galaxy", "mint", "acid-swirl",
+        "cover-mandala", "cover-hero", "cover-glitch", "cover-cosmic",
     };
     return kNames;
 }
@@ -153,6 +183,14 @@ COMMON OPTIONS
       --bloom <float>             Luminous bloom strength    (default: 0.3)
       --bloom-threshold <float>   Brightness to bloom        (default: 0.5)
       --falloff <float>           Exterior fade-to-void      (default: 0)
+
+  ALBUM-ART / DESIGN LAYER (all off at 0; see the cover-* presets)
+      --kaleido <float>           N mirrored wedges -> mandala (default: 0/off)
+      --kaleido-angle <float>     Rotate the symmetry, degrees (default: 0)
+      --aberration <float>        Chromatic RGB split, pixels (default: 0)
+      --vignette <float>          Darken corners 0..1         (default: 0)
+      --grain <float>             Film-grain noise amount     (default: 0)
+      --scanlines <float>         CRT scanline depth 0..1     (default: 0)
   -o, --output <path>             Output file
 
 VIDEO OPTIONS
@@ -302,6 +340,13 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "--bloom")      { if (!cur.nextDouble(flag, cfg.bloom)) break; }
         else if (flag == "--bloom-threshold") { if (!cur.nextDouble(flag, cfg.bloom_threshold)) break; }
         else if (flag == "--falloff")    { if (!cur.nextDouble(flag, cfg.falloff)) break; }
+        // ---- album-art / design layer ----
+        else if (flag == "--kaleido")    { if (!cur.nextDouble(flag, cfg.kaleido)) break; }
+        else if (flag == "--kaleido-angle"){ if (!cur.nextDouble(flag, cfg.kaleido_angle)) break; }
+        else if (flag == "--aberration") { if (!cur.nextDouble(flag, cfg.aberration)) break; }
+        else if (flag == "--vignette")   { if (!cur.nextDouble(flag, cfg.vignette)) break; }
+        else if (flag == "--grain")      { if (!cur.nextDouble(flag, cfg.grain)) break; }
+        else if (flag == "--scanlines")  { if (!cur.nextDouble(flag, cfg.scanlines)) break; }
         else if (flag == "-o" || flag == "--output") {
             if (!cur.nextStr(flag, cfg.output)) break;
             output_set = true;

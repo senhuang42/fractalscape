@@ -33,10 +33,13 @@ make test                    # -> ./run_tests (GL-free unit tests)
 - `src/renderer.{h,cpp}` + `src/gl.h` — the ONLY OpenGL code. Passes: render
   fractal into a supersampled FBO -> gamma-correct downsample to output FBO ->
   (optional) bloom: bright-pass + separable Gaussian blur (`bloom.frag`, run H
-  then V) screen-composited back (`composite.frag`) -> `glReadPixels` from
-  whichever FBO was last written (`read_fbo_`).
-- Shaders: `fractal.frag` (math/coloring/lighting), `downsample.frag` (resolve
-  + grade), `bloom.frag` (bright-pass + separable blur), `composite.frag`.
+  then V) screen-composited back (`composite.frag`) -> (optional) post pass
+  (`post.frag`: chromatic aberration + vignette + scanlines + grain, run only
+  if any is > 0) -> `glReadPixels` from whichever FBO was last written
+  (tracked by `read_fbo_`/`read_tex_`).
+- Shaders: `fractal.frag` (math/coloring/lighting + the kaleidoscope coord
+  fold), `downsample.frag` (resolve + grade), `bloom.frag` (bright-pass +
+  separable blur), `composite.frag`, `post.frag` (album-art design layer).
 - `shaders/fractal.frag` — the math + coloring + shading + traps.
 - `src/fractal_math.h` — CPU reference that MIRRORS `fractal.frag`. Kept in sync
   so the algorithm is unit-testable without a GL context. If you change the
@@ -92,17 +95,53 @@ make test                    # -> ./run_tests (GL-free unit tests)
 - **Bloom** is the last render pass (`bloom.frag` H+V, `composite.frag`), on by
   default. **Lighting** is in `fractal.frag` (height = displayed luminance via
   `dFdx/dFdy`, resolution-normalized).
+- **Album-art design layer** (all off by default; the `cover-*` presets wire
+  them up on the fuchsia-forward `vice` palette): `--kaleido N` folds the screen
+  coordinate into N mirrored wedges in `fractal.frag` *before* the plane map
+  (symmetry about frame center, independent of `--center`); `--aberration`,
+  `--vignette`, `--scanlines`, `--grain` are a single post pass (`post.frag`).
+  Two gotchas baked in: scanline frequency is a FIXED line count (260), not
+  tied to pixel height, or it aliases to nothing at high res; radial aberration
+  barely fringes a centered subject, so it needs a healthy value (~20px) to read.
+  Covers are square — render `--size 3000x3000` for streaming/print.
 - **Presets** (`applyPreset` in `cli.cpp`) are curated c+framing+palette combos
   applied as a base in a pre-scan, so explicit flags override them. Add new ones
-  there AND in `presetNames()`. `assets/presets.png` is the contact sheet
-  (regenerate by rendering each preset + `montage`).
+  there AND in `presetNames()` AND a test in `test_cli.cpp`. Per-preset example
+  stills live in `assets/presets/<name>.png`; `assets/presets.png` is the
+  `montage` contact sheet of them (regenerate both when adding a preset).
+- **A cyclic palette is the key to a multi-hue image.** A non-cyclic ramp on a
+  region whose stripe/iter values cluster reads as ONE hue (e.g. all teal). The
+  `acid-swirl` preset gets vivid teal↔fuchsia from the *same default Julia set*
+  only because `prism` is applied cyclic (`c.cyclic=true`) so the relief sweeps
+  the whole gradient and loops. Reach for cyclic before reaching for a new `c`.
+- **Washed-out interiors = a contrast problem, almost always the palette.** The
+  deep interior of a spiral has high `mu` and SAC ≈ 0.5, so its relief is
+  inherently *low-amplitude* — it only shows if the palette has the dynamic
+  range to expand it. Two things flatten it: a palette whose dark anchor isn't
+  near-black (gruvbox's old `#1d2021` grey → washed haze; fixed to `#0d0b08`),
+  and pastel/desaturated mids or a lowered `saturation` grade (don't — I muted
+  `prism` into pastels once and the interiors went flat; reverted). Also: a
+  *desaturated near-white* top stop makes slow-escape cores read as a grey blob
+  (ember's old `#fff1c1` → grey seahorse eye; fixed to warm gold `#ffdc8f`).
+  Rule of thumb: ramp near-black → saturated mids → warm/colored (not white)
+  highlight, and leave `saturation` at the default 1.3.
 - **Palettes** are dark→bright ramps in `palette.cpp`; restrained ones keep
-  detail coherent, wider-gamut ones (sunset/neon/synthwave/etc.) are vibrant.
+  detail coherent, wider-gamut ones (sunset/neon/prism/etc.) are vibrant.
 - **Zoom videos**: shader is 32-bit float -> pixelates past ~1e4×. Keep the
   target on a detail-rich exterior point at ALL scales (probe with stills) or
   the path crosses black set-interior bodies. -0.7453,0.1127 works to ~0.0013.
 - Video uses lower default SSAA (2) than stills (4) because it renders hundreds
   of frames. x264 + yuv420p needs even dimensions (handled in `runVideo`).
+- **Rendering is GPU-compute-bound, dominated by iteration count, not I/O.**
+  Measured: a deep seahorse frame costs ~10× a shallow one at equal res because
+  near-boundary pixels run the full `max_iter`. So the real speed levers are
+  `-i` and `--ssaa`, nothing else. Encoding is ~free (x264 keeps up trivially),
+  so there's no point parallelizing it; `runVideo` does overlap readback+encode
+  on a writer thread, but the GPU is the serial bottleneck and `glReadPixels`
+  must sync on the GL thread, so the win is small. `-i 2000` is visually
+  identical to `-i 4000` (PSNR ~73 dB) on detail-rich zooms — don't over-budget
+  iterations. The shader skips derivative (`dz`) tracking unless glow/falloff
+  are on (`useDE`); lossless, but minor next to the stripe `atan2`+`sin`.
 
 ## Conventions
 

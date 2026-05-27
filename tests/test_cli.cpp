@@ -86,10 +86,40 @@ void test_cli() {
         CHECK(p.render.type == FractalType::Mandelbrot);
     }
     {
+        // acid-swirl: trippy fuchsia/teal on the default spiral, cyclic prism
+        auto p = parse({"render", "-P", "acid-swirl"});
+        CHECK(p.error.empty());
+        CHECK(p.render.type == FractalType::Julia);
+        CHECK_NEAR(p.render.julia_cre, -0.512511, 1e-9);
+        CHECK(p.render.cyclic);
+        CHECK_NEAR(p.render.stripe_freq, 9.0, 1e-9);
+        CHECK(p.render.palette.size() >= 2); // prism resolved
+    }
+    {
         // explicit flags override the preset regardless of order
         auto p = parse({"render", "-P", "frostbite", "--cre", "-0.8"});
         CHECK(p.error.empty());
         CHECK_NEAR(p.render.julia_cre, -0.8, 1e-9);
+    }
+    {
+        // album-art design flags parse into the config
+        auto p = parse({"render", "--kaleido", "8", "--aberration", "4.5",
+                        "--vignette", "0.4", "--grain", "0.03", "--scanlines", "0.2"});
+        CHECK(p.error.empty());
+        CHECK_NEAR(p.render.kaleido, 8.0, 1e-9);
+        CHECK_NEAR(p.render.aberration, 4.5, 1e-9);
+        CHECK_NEAR(p.render.vignette, 0.4, 1e-9);
+        CHECK_NEAR(p.render.grain, 0.03, 1e-9);
+        CHECK_NEAR(p.render.scanlines, 0.2, 1e-9);
+    }
+    {
+        // cover-mandala preset wires up the kaleidoscope mode
+        auto p = parse({"render", "-P", "cover-mandala"});
+        CHECK(p.error.empty());
+        CHECK_NEAR(p.render.kaleido, 8.0, 1e-9);
+        CHECK(p.render.cyclic);
+        CHECK(p.render.vignette > 0.0);
+        CHECK(p.render.palette.size() >= 2); // vice resolved
     }
     CHECK(!parse({"render", "-P", "bogus"}).error.empty());
 

@@ -43,6 +43,8 @@ uniform float uShininess;    // specular exponent (higher = tighter highlight)
 uniform float uHeightScale;  // how strongly the relief tilts the surface normal
 uniform float uGlow;         // distance-estimate filament glow strength
 uniform float uFalloff;      // exterior fade-to-void by distance (0 = off)
+uniform float uKaleido;      // N mirrored wedges (< 2 = off)
+uniform float uKaleidoAngle; // rotate the symmetry, radians
 
 const float PI = 3.14159265358979;
 
@@ -60,6 +62,20 @@ vec2 cpow(vec2 z, float p) {
 void main() {
     // Map pixel -> complex plane, preserving aspect via the y axis.
     vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / uResolution.y;
+
+    // Kaleidoscope: fold uv into N mirrored wedges around the image center, so
+    // the fractal repeats with radial symmetry into a mandala. Done in screen
+    // space (before the plane map) so symmetry is about the frame center.
+    if (uKaleido >= 2.0) {
+        float seg = 2.0 * PI / uKaleido;
+        float a   = atan(uv.y, uv.x) - uKaleidoAngle;
+        float r   = length(uv);
+        a = mod(a, seg);
+        a = abs(a - 0.5 * seg);          // mirror within the wedge
+        a += uKaleidoAngle;
+        uv = r * vec2(cos(a), sin(a));
+    }
+
     vec2 p  = uCenter + uv * (2.0 * uScale);
 
     bool mandel = (uType == 0);
@@ -73,6 +89,11 @@ void main() {
 
     bool  useStripe = uStripeColor > 0.0;
     bool  useTrap   = uTrapColor   > 0.0;
+    // The derivative dz is only needed for the distance estimate, which only
+    // feeds the (off-by-default) glow/falloff. Skipping it drops a complex
+    // multiply from every iteration on the common path — pure dead work
+    // otherwise. Output is bit-identical when glow and falloff are both 0.
+    bool  useDE     = (uGlow > 0.0) || (uFalloff > 0.0);
     const int kStripeSkip = 1; // skip first iterations (transient orbit points)
 
     int   i;
@@ -84,10 +105,10 @@ void main() {
     for (i = 0; i < uMaxIter; i++) {
         // Update derivative using the current z, then advance z.
         if (quad) {
-            dz = 2.0 * cmul(z, dz) + one;
+            if (useDE) dz = 2.0 * cmul(z, dz) + one;
             z  = cmul(z, z) + c;
         } else {
-            dz = uExponent * cmul(cpow(z, uExponent - 1.0), dz) + one;
+            if (useDE) dz = uExponent * cmul(cpow(z, uExponent - 1.0), dz) + one;
             z  = cpow(z, uExponent) + c;
         }
         if (useTrap) trap = min(trap, distance(z, uTrapPoint));
@@ -186,20 +207,23 @@ void main() {
     }
 
     // Distance estimate: plane-space distance to the set boundary, in pixels.
-    float d       = sqrt(m2 / max(dot(dz, dz), 1e-20)) * 0.5 * log(m2);
-    float pixsize = 2.0 * uScale / uResolution.y;
-    float dpix    = d / pixsize;
+    // Only computed when something consumes it (dz is only tracked then too).
+    if (useDE) {
+        float d       = sqrt(m2 / max(dot(dz, dz), 1e-20)) * 0.5 * log(m2);
+        float pixsize = 2.0 * uScale / uResolution.y;
+        float dpix    = d / pixsize;
 
-    // Fade the exterior toward the void by distance -> color hugs the filigree.
-    if (uFalloff > 0.0) {
-        float vis = exp(-dpix * uFalloff);
-        col = mix(uInsideColor, col, clamp(vis, 0.0, 1.0));
-    }
+        // Fade the exterior toward the void by distance -> color hugs filigree.
+        if (uFalloff > 0.0) {
+            float vis = exp(-dpix * uFalloff);
+            col = mix(uInsideColor, col, clamp(vis, 0.0, 1.0));
+        }
 
-    // Glow lights the very finest filaments right at the boundary.
-    if (uGlow > 0.0) {
-        float g = exp(-dpix * dpix * 0.5);
-        col += uGlow * g * texture(uPalette, vec2(fract(uColorOffset + 0.5), 0.5)).rgb;
+        // Glow lights the very finest filaments right at the boundary.
+        if (uGlow > 0.0) {
+            float g = exp(-dpix * dpix * 0.5);
+            col += uGlow * g * texture(uPalette, vec2(fract(uColorOffset + 0.5), 0.5)).rgb;
+        }
     }
 
     FragColor = vec4(col, 1.0);

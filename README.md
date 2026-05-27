@@ -9,17 +9,49 @@ The coloring is the interesting part — see [how it works](#how-it-works).
 
 ![grayscale stripe-average spiral](assets/hero_noir.png)
 
+Every image below is a one-word **preset** (`-P <name>`), each landing on a
+different region of a Julia or Mandelbrot set:
+
 | | | |
 |---|---|---|
-| ![blue spiral](assets/julia_frost.png) | ![magma spiral](assets/julia_magma.png) | ![ember seahorse](assets/mandel_ember.png) |
-| ![ocean spiral](assets/julia_ocean.png) | ![sunset spiral](assets/julia_sunset.png) | ![viridis spiral](assets/julia_viridian.png) |
+| ![acid-swirl](assets/presets/acid-swirl.png)<br>`-P acid-swirl` — default Julia, teal/fuchsia | ![frostbite](assets/presets/frostbite.png)<br>`-P frostbite` — a dendrite arm | ![galaxy](assets/presets/galaxy.png)<br>`-P galaxy` — the "rabbit" |
+| ![ember-seahorse](assets/presets/ember-seahorse.png)<br>`-P ember-seahorse` — Mandelbrot seahorse | ![viridian](assets/presets/viridian.png)<br>`-P viridian` — a different Julia | ![inferno-valley](assets/presets/inferno-valley.png)<br>`-P inferno-valley` — a Mandelbrot valley |
+
+...and here's the full set of presets:
+
+![preset gallery](assets/presets.png)
 
 Video examples: a seamless [rotating loop](assets/loop_magma.mp4) and a
 [rapid zoom](assets/zoom_seahorse.mp4) into the seahorse valley.
 
-There are a bunch of one-word **presets** — here's every one:
+## Album art
 
-![preset gallery](assets/presets.png)
+There's a design layer on top of the fractal for making covers — four
+composable, toggleable modes, each with a ready-made `cover-*` preset on a
+fuchsia-forward neon palette (`vice`). All are square; render at `--size
+3000x3000` for streaming/print.
+
+![album-art modes](assets/covers.png)
+
+```sh
+fractal render -P cover-mandala --size 3000x3000 -o cover.png  # radial symmetry
+fractal render -P cover-hero    --size 3000x3000 -o cover.png  # cinematic spiral
+fractal render -P cover-glitch  --size 3000x3000 -o cover.png  # RGB-split + scanlines
+fractal render -P cover-cosmic  --size 3000x3000 -o cover.png  # soft nebula glow
+```
+
+The modes are just flags, so you can mix them onto any render:
+
+| flag | effect |
+|---|---|
+| `--kaleido <N>` | fold the view into N mirrored wedges → mandala (`--kaleido-angle` to rotate) |
+| `--aberration <px>` | chromatic RGB split along the radius (neon fringing) |
+| `--scanlines <0..1>` | CRT scanlines |
+| `--vignette <0..1>` | darken the corners to seat the focal point |
+| `--grain <0..0.1>` | film grain so flats read as texture, not plastic |
+
+E.g. a kaleidoscope on the seahorse in your own colors:
+`fractal render -P ember-seahorse --kaleido 12 --vignette 0.4 -o cover.png`.
 
 ## Build
 
@@ -47,6 +79,7 @@ The fastest way to something good is a preset:
 
 ```sh
 fractal render -P frostbite -o spiral.png        # blue spiral
+fractal render -P acid-swirl -o trippy.png       # fuchsia/teal, full default set
 fractal render -P ember-seahorse --ssaa 6 -o seahorse.png
 fractal render -P dusk -o sunset.png             # warm spiral
 fractal help                                     # lists all presets
@@ -69,7 +102,9 @@ fractal video --mode rotate -p magma -d 20 --fps 30 -o loop.mp4
 fractal video --type mandelbrot --mode zoom \
               --center-x -0.7453 --center-y 0.1127 \
               --zoom-target-x -0.7453 --zoom-target-y 0.1127 \
-              --scale 0.2 --zoom-end 0.0013 -i 3000 -p inferno -d 7 -o zoom.mp4
+              --scale 0.2 --zoom-end 0.0013 \
+              -i 2000 -p inferno --ssaa 4 -w 1080 --height 1080 \
+              --fps 60 -d 8 -o zoom.mp4
 ```
 
 For zooms, keep the target on a detail-rich spot and don't go below ~`0.001`
@@ -79,7 +114,8 @@ Palettes are dark→bright ramps so detail stays readable instead of turning int
 rainbow mush. The restrained ones: `noir` (default), `frost`, `magma`,
 `viridis`, `inferno`, `plasma`, `cividis`, `ember`, `ice`, `fire`, `mono`. The
 wider-gamut themes: `sunset`, `ocean`, `neon`, `candy`, `gold`, `emerald`,
-`vapor`, `aurora`, `bloom`, `psychedelic`. Or pass your own hex list, e.g.
+`vapor`, `prism` (teal↔fuchsia), `aurora`, `bloom`, `psychedelic`. Or
+pass your own hex list, e.g.
 `-p "#00040c,#2f6fb0,#eaf7ff"`.
 
 The knobs worth knowing (`fractal help` has the rest):

@@ -36,7 +36,10 @@ const std::map<std::string, std::vector<std::string>>& namedPalettes() {
         // matplotlib viridis — perceptually uniform, indigo -> teal -> yellow.
         {"viridis",     {"#440154", "#414487", "#2a788e", "#22a884", "#7ad151", "#fde725"}},
         // Warm volcanic.
-        {"ember",       {"#0a0200", "#3d0c02", "#9a1f0b", "#e8540c", "#ffae42", "#fff1c1"}},
+        // Top stop is a warm gold, not near-white (#fff1c1): the slow-escape
+        // spiral cores land on the brightest stop, and a desaturated near-white
+        // there reads as a grey blob. Warm gold keeps the cores hot AND warm.
+        {"ember",       {"#0a0200", "#3d0c02", "#9a1f0b", "#e8540c", "#ffae42", "#ffdc8f"}},
         // Cool glacial blues and whites.
         {"ice",         {"#01030f", "#0a2a5e", "#1f6fb2", "#56c4e8", "#b8f0ff", "#ffffff"}},
         // Classic flame.
@@ -54,15 +57,28 @@ const std::map<std::string, std::vector<std::string>>& namedPalettes() {
         {"sunset",      {"#1a0633", "#5e1a6b", "#c02a6e", "#ff6b4a", "#ffb45e", "#ffe9a8"}},
         {"ocean",       {"#001028", "#003a5c", "#1f7a8c", "#52d6c4", "#bdf0e0", "#ffffff"}},
         {"neon",        {"#050008", "#ff0080", "#7a00ff", "#00e5ff", "#00ff95", "#faff00"}},
+        // Fuchsia-forward neon (Miami-Vice synthwave): magenta/pink dominate,
+        // a violet bridge, one cyan pop at the top -- no green/yellow. Built for
+        // album art; pairs with the cover-* presets.
+        {"vice",        {"#070010", "#5e0048", "#b80077", "#ff1a8d", "#ff66c4", "#c44bff", "#36e6ff"}},
         {"candy",       {"#190a2e", "#ff5fa2", "#ff9ec7", "#ffd6e8", "#a0e7ff", "#7afcff"}},
         {"gold",        {"#0a0600", "#3d2600", "#8a5a00", "#d49a1a", "#ffd86b", "#fff4cf"}},
         {"emerald",     {"#001a10", "#00402a", "#0a7a50", "#3fd089", "#b8f0c8", "#ffffff"}},
         {"vapor",       {"#1a0b2e", "#7b2ff7", "#f72585", "#4cc9f0", "#80ffea", "#ffffff"}},
+        // Teal <-> fuchsia: a near-complementary journey (teal -> cyan -> blue
+        // -> violet -> fuchsia) with a periwinkle bridge so the mid transition
+        // stays colorful, not muddy. Saturated stops from a near-black anchor =
+        // high contrast, so the subtle interior relief still reads. (Earlier I
+        // muted this into pastels and it washed the interiors flat -- keep the
+        // contrast; this version just dials the peak brightness down a touch.)
+        {"prism",       {"#05021a", "#06525a", "#0eb8aa", "#4a9ae6", "#8a50e0", "#e62aa3", "#ecb0db"}},
         // Popular design color schemes, arranged as dark->bright ramps.
         {"synthwave",   {"#100024", "#3b0f6f", "#b5179e", "#ff2a6d", "#ff9e64", "#fff3b0"}},
         {"nord",        {"#11131a", "#2e3440", "#434c5e", "#5e81ac", "#88c0d0", "#eceff4"}},
         {"dracula",     {"#15161e", "#282a36", "#6272a4", "#bd93f9", "#ff79c6", "#f1fa8c"}},
-        {"gruvbox",     {"#1d2021", "#3c1a0a", "#cc241d", "#d65d0e", "#d79921", "#fbf1c7"}},
+        // Anchored at near-black (not gruvbox's grey #1d2021) so the exterior
+        // and deep relief stay dark -> full contrast instead of a washed haze.
+        {"gruvbox",     {"#0d0b08", "#3c1a0a", "#cc241d", "#d65d0e", "#d79921", "#fbf1c7"}},
         {"autumn",      {"#1a0e08", "#4a1c10", "#8a3324", "#c1440e", "#e08e0b", "#f7d08a"}},
         {"rosegold",    {"#1a0d12", "#4a1f2e", "#8a3a52", "#c76b7e", "#e8a9a0", "#f7e6dd"}},
         {"galaxy",      {"#05010f", "#1a1248", "#4b2a9e", "#8e44ad", "#c06ff2", "#ffe6ff"}},
