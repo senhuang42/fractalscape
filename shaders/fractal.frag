@@ -32,6 +32,8 @@ uniform bool      uHasStripePalette; // false -> reuse uPalette for stripe layer
 uniform bool      uColorInside;      // color set interior by SAC instead of flat
 uniform int       uPosterize;        // 0 = off, otherwise quantize sample pos
 uniform bool      uLogIter;          // Maths Town-style cyclic log-iter coloring
+uniform float     uSlopes;           // directional shading from log(mu) gradient (0 = off)
+uniform float     uSlopesSpec;       // specular intensity for slopes (0 = none)
 uniform float     uNebulaWeight;     // strength of the nebula accent (0 = off)
 uniform vec3      uNebulaColor;      // wisp tint (multiplied by density); ignored in RGB mode
 uniform float     uNebulaHueShift;   // density modulates stripe sample position
@@ -311,6 +313,26 @@ void main() {
         float spec = pow(max(dot(N, H), 0.0), uShininess);
         col *= (1.0 - uShading) + uShading * diff;        // diffuse emboss
         col += uSpecular * spec * lum * vec3(1.0);        // specular sheen
+    }
+
+    // Maths Town-style "Slopes": directional shading from the gradient of
+    // log(mu). Unlike --shading (which uses luminance and breaks on banded /
+    // cyclic palettes), this reads TRUE escape-time depth, so even a posterized
+    // or cyclic palette gets clean 3D relief. The height field is log(mu) so
+    // both shallow and deep regions contribute smoothly; the same height_scale
+    // / light_angle / light_height / shininess uniforms apply.
+    if (uSlopes > 0.0 || uSlopesSpec > 0.0) {
+        float h   = log(mu);
+        float hx  = dFdx(h) * uResolution.y;
+        float hy  = dFdy(h) * uResolution.y;
+        vec3  N   = normalize(vec3(-hx * uHeightScale, -hy * uHeightScale, 1.0));
+        float az  = radians(uLightAngle);
+        vec3  L   = normalize(vec3(cos(az), sin(az), max(uLightHeight, 0.05)));
+        vec3  H   = normalize(L + vec3(0.0, 0.0, 1.0));
+        float diff = max(dot(N, L), 0.0);
+        float spec = pow(max(dot(N, H), 0.0), uShininess);
+        col *= (1.0 - uSlopes) + uSlopes * diff;
+        col += uSlopesSpec * spec * vec3(1.0);
     }
 
     // Distance estimate: plane-space distance to the set boundary, in pixels.

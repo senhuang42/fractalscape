@@ -114,6 +114,15 @@ const std::map<std::string, std::vector<std::string>>& namedPalettes() {
         {"psychedelic", {"#000010", "#ff006e", "#fb5607", "#ffbe0b", "#8ac926", "#3a86ff", "#8338ec"}},
         // Monochrome grayscale.
         {"mono",        {"#000000", "#ffffff"}},
+        // Maths Town-style restrained palettes: smooth dark->light single-hue
+        // ramps. Pair with low --color-density (~0.005-0.015) and heavy
+        // --slopes / --shading for the embossed monochromatic look his videos
+        // are known for. Each pairs with a distinct inside_color "spiral eye"
+        // accent (set per preset, not in the palette).
+        {"tealfog",     {"#0a1820", "#1a3340", "#3a6878", "#7ab0c0", "#dbeff5", "#f5fbfd"}},
+        {"sepia",       {"#15100a", "#2a1f10", "#5a4a2c", "#a89878", "#e8dcc0", "#fcf5e8"}},
+        {"chrome",      {"#080810", "#1a1a22", "#404048", "#909098", "#e0e0e8", "#fafaff"}},
+        {"honeycomb",   {"#1a0a02", "#3a1f08", "#a86820", "#e8a838", "#f8e088", "#fff5d0"}},
         // High-voltage cyan/magenta on black with a white peak. Built for the
         // cyberpunk preset; pairs well with --posterize 4 for a Tron-grid look.
         {"electric",    {"#000010", "#0040c4", "#00e0ff", "#ff20cc", "#ffffff"}},

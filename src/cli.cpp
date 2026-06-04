@@ -430,6 +430,70 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
         c.angle_color = 0.08;
         c.bloom = 0.35;
     }
+    // --- Maths Town monochromatic-relief presets (the OTHER signature look).
+    // Restrained palette (dark->light single hue family) + Slopes (true depth
+    // shading via gradient of log(mu)) + smooth low-density exp coloring + a
+    // distinct inside_color accent for the deepest spiral eyes. Mimics the
+    // embossed-fractal aesthetic of Adam's monochromatic shots.
+
+    // mathstown-teal: dark teal field, lighter teal-grey filaments radiating
+    // out from a Misiurewicz center in a star pattern, indigo dots at the
+    // deepest spiral eyes. Mirrors the teal radiating-star reference frame.
+    // Center is an exact Misiurewicz point so the radiating filaments are
+    // sharp and self-similar.
+    else if (name == "mathstown-teal") {
+        mandel(-0.7432918908524302, 0.1312405523087976, 0.002, 3500, "tealfog");
+        c.interp = InterpMode::Oklab;
+        c.color_density = 0.013;
+        c.stripe_color = 0.0;
+        c.slopes = 0.6; c.slopes_spec = 0.35;
+        c.light_angle = 135.0; c.light_height = 1.2; c.height_scale = 2.2;
+        c.shininess = 14.0;
+        c.bloom = 0.4; c.bloom_threshold = 0.6;
+        c.inside_color = {0.10f, 0.08f, 0.30f}; // subdued indigo eye
+    }
+    // mathstown-sepia: warm cream/tan field with darker filaments, subtle
+    // green-cream highlights at spiral cores. Reference image 2.
+    else if (name == "mathstown-sepia") {
+        mandel(-0.74364388703, 0.13182590421, 0.004, 3500, "sepia");
+        c.interp = InterpMode::Oklab;
+        c.color_density = 0.01;
+        c.stripe_color = 0.0;
+        c.slopes = 0.6; c.slopes_spec = 0.35;
+        c.light_angle = 110.0; c.light_height = 1.4; c.height_scale = 2.2;
+        c.shininess = 12.0;
+        c.bloom = 0.35; c.bloom_threshold = 0.6;
+        c.inside_color = {0.25f, 0.30f, 0.15f}; // muted olive-green eye
+    }
+    // mathstown-chrome: silver/grey embossed cluster of spirals with tiny
+    // indigo eye accents. The purest monochromatic Maths Town render.
+    // Seahorse-valley framing has more exterior structure than elephant valley
+    // at the same scale, so the chrome field reads bright instead of being
+    // dominated by inside_color. Reference image 3.
+    else if (name == "mathstown-chrome") {
+        mandel(-0.74364388703, 0.13182590421, 0.0035, 4000, "chrome");
+        c.interp = InterpMode::Oklab;
+        c.color_density = 0.011;
+        c.stripe_color = 0.0;
+        c.slopes = 0.7; c.slopes_spec = 0.45;
+        c.light_angle = 125.0; c.light_height = 1.0; c.height_scale = 2.6;
+        c.shininess = 16.0;
+        c.bloom = 0.3; c.bloom_threshold = 0.65;
+        c.inside_color = {0.10f, 0.08f, 0.40f}; // indigo eye
+    }
+    // mathstown-honey: warm gold field with lime-green spiral core highlights.
+    // Reference image 4.
+    else if (name == "mathstown-honey") {
+        mandel(-0.748, 0.1, 0.003, 3500, "honeycomb");
+        c.interp = InterpMode::Oklab;
+        c.color_density = 0.011;
+        c.stripe_color = 0.0;
+        c.slopes = 0.65; c.slopes_spec = 0.4;
+        c.light_angle = 140.0; c.light_height = 1.2; c.height_scale = 2.4;
+        c.shininess = 14.0;
+        c.bloom = 0.4; c.bloom_threshold = 0.55;
+        c.inside_color = {0.30f, 0.55f, 0.20f}; // lime green eye
+    }
     else if (name == "plasma-storm") {
         mandel(-0.748, 0.1, 0.09, 2500, "inferno");
         c.interp = InterpMode::Oklab; c.bloom = 0.4;
@@ -474,6 +538,7 @@ const std::vector<std::string>& presetNames() {
         "nebula-seahorse", "nebula-elephant", "dragon-storm", "rabbit-ember",
         "dendrite-glow", "plasma-storm",
         "mathstown-classic", "mathstown-seahorse", "mathstown-deep", "mathstown-cosmos",
+        "mathstown-teal", "mathstown-sepia", "mathstown-chrome", "mathstown-honey",
         "burning-ship", "phoenix", "newton",
     };
     return kNames;
@@ -591,6 +656,16 @@ COMMON OPTIONS
                                   instead of saturating to the bright end.
                                   Use color_density ~0.3-2.0 (not 0.035).
                                   Pairs well with a cyclic palette.
+      --slopes <float>            Maths Town-style "Slopes": directional
+                                  light from gradient of log(mu) (default 0).
+                                  Unlike --shading (which lights luminance
+                                  and breaks on banded palettes), --slopes
+                                  reads TRUE depth so cyclic/posterized
+                                  palettes still get clean 3D relief. Uses
+                                  --light-angle / --light-height for
+                                  direction; --slopes-spec adds highlights.
+      --slopes-spec <float>       Specular highlight strength for --slopes
+                                  (default 0). Tightness reuses --shininess.
 
   ALBUM-ART / DESIGN LAYER (all off at 0; see the cover-* presets)
       --kaleido <float>           N mirrored wedges -> mandala (default: 0/off)
@@ -834,6 +909,8 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "--nebula-bloom")     { if (!cur.nextDouble(flag, cfg.nebula_bloom)) break; }
         else if (flag == "--nebula-rgb")       { cfg.nebula_rgb = true; }
         else if (flag == "--log-iter")         { cfg.log_iter = true; }
+        else if (flag == "--slopes")           { if (!cur.nextDouble(flag, cfg.slopes)) break; }
+        else if (flag == "--slopes-spec")      { if (!cur.nextDouble(flag, cfg.slopes_spec)) break; }
         // ---- album-art / design layer ----
         else if (flag == "--kaleido")    { if (!cur.nextDouble(flag, cfg.kaleido)) break; }
         else if (flag == "--kaleido-angle"){ if (!cur.nextDouble(flag, cfg.kaleido_angle)) break; }

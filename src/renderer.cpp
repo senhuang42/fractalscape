@@ -336,6 +336,12 @@ void Renderer::render(const RenderConfig& cfg) {
         setUniform1i(deep_prog_, "uColorInside",     cfg.color_inside ? 1 : 0);
         setUniform1i(deep_prog_, "uPosterize",       cfg.posterize);
         setUniform1i(deep_prog_, "uLogIter",         cfg.log_iter ? 1 : 0);
+        setUniform1f(deep_prog_, "uSlopes",          (float)cfg.slopes);
+        setUniform1f(deep_prog_, "uSlopesSpec",      (float)cfg.slopes_spec);
+        setUniform1f(deep_prog_, "uLightAngle",      (float)cfg.light_angle);
+        setUniform1f(deep_prog_, "uLightHeight",     (float)cfg.light_height);
+        setUniform1f(deep_prog_, "uHeightScale",     (float)cfg.height_scale);
+        setUniform1f(deep_prog_, "uShininess",       (float)cfg.shininess);
         setUniform1f(deep_prog_, "uColorDensity", (float)cfg.color_density);
         setUniform1f(deep_prog_, "uColorOffset", (float)cfg.color_offset);
         setUniform1f(deep_prog_, "uStripeColor", (float)cfg.stripe_color);
@@ -388,6 +394,8 @@ void Renderer::render(const RenderConfig& cfg) {
     setUniform1f(fractal_prog_, "uNebulaHueShift", has_nebula_ ? (float)cfg.nebula_hue_shift : 0.0f);
     setUniform1i(fractal_prog_, "uNebulaRgb",      cfg.nebula_rgb ? 1 : 0);
     setUniform1i(fractal_prog_, "uLogIter",        cfg.log_iter ? 1 : 0);
+    setUniform1f(fractal_prog_, "uSlopes",         (float)cfg.slopes);
+    setUniform1f(fractal_prog_, "uSlopesSpec",     (float)cfg.slopes_spec);
     setUniform1f(fractal_prog_, "uColorDensity", (float)cfg.color_density);
     setUniform1f(fractal_prog_, "uColorOffset", (float)cfg.color_offset);
     setUniform1f(fractal_prog_, "uAngleColor", (float)cfg.angle_color);

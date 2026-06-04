@@ -152,6 +152,15 @@ struct RenderConfig {
     // color_density takes very different values here -- ~0.3-2.0 typical
     // (band-density per natural-log unit), not the 0.035 of the exp default.
     bool   log_iter      = false;
+    // Maths Town-style "Slopes": directional shading derived from the
+    // gradient of log(mu) (a smooth depth-like scalar). Unlike --shading,
+    // which lights luminance and breaks down on cyclic/banded palettes,
+    // --slopes always reads true escape-time depth so cyclic palettes still
+    // get proper 3D relief. Strength 0..1 mixes diffuse light into the
+    // final color; pair with --light-angle / --light-height (which --shading
+    // already uses) for direction.
+    double slopes        = 0.0;
+    double slopes_spec   = 0.0;  // specular highlight intensity (0 = none)
     // Separate palette for the stripe (SAC) layer. Empty -> use main palette for
     // both layers (the original behavior). When set, the iter layer samples the
     // main palette and the stripe layer samples this one, so field and structure

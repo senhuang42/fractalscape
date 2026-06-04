@@ -26,6 +26,12 @@ uniform bool      uHasStripePalette; // false -> reuse uPalette for stripe layer
 uniform bool      uColorInside;      // color set interior by SAC instead of flat
 uniform int       uPosterize;        // 0 = off, otherwise quantize sample pos
 uniform bool      uLogIter;          // Maths Town-style cyclic log-iter coloring
+uniform float     uSlopes;           // directional shading from log(mu) gradient (0 = off)
+uniform float     uSlopesSpec;       // specular intensity for slopes (0 = none)
+uniform float     uLightAngle;       // light direction (degrees, deep path reuses fractal.frag knobs)
+uniform float     uLightHeight;
+uniform float     uHeightScale;
+uniform float     uShininess;
 uniform float uColorDensity;
 uniform float uColorOffset;
 uniform float uStripeColor;
@@ -159,6 +165,24 @@ void main() {
             vec3 iterCol   = sampleIter(iterS);
             col = mix(iterCol, stripeCol * gate, uStripeColor);
         }
+    }
+
+    // Maths Town-style Slopes: directional shading from gradient of log(mu).
+    // Works correctly with cyclic/banded palettes (unlike luminance-based
+    // shading) since it reads true depth, not painted color. Reuses the same
+    // light-direction uniforms as fractal.frag.
+    if (uSlopes > 0.0 || uSlopesSpec > 0.0) {
+        float h   = log(mu);
+        float hx  = dFdx(h) * uResolution.y;
+        float hy  = dFdy(h) * uResolution.y;
+        vec3  N   = normalize(vec3(-hx * uHeightScale, -hy * uHeightScale, 1.0));
+        float az  = radians(uLightAngle);
+        vec3  L   = normalize(vec3(cos(az), sin(az), max(uLightHeight, 0.05)));
+        vec3  H   = normalize(L + vec3(0.0, 0.0, 1.0));
+        float diff = max(dot(N, L), 0.0);
+        float spec = pow(max(dot(N, H), 0.0), uShininess);
+        col *= (1.0 - uSlopes) + uSlopes * diff;
+        col += uSlopesSpec * spec * vec3(1.0);
     }
     FragColor = vec4(col, 1.0);
 }
