@@ -318,11 +318,17 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
     // nebula-elephant: Mandelbrot elephant valley with 3-channel RGB nebula
     // tracing trunks in different orbit-lifetime bands. Rich multi-hue wisps.
     else if (name == "nebula-elephant") {
+        // Mono mode at this scale: RGB lifetime-spectrum at scale 0.04 needs
+        // hundreds of millions of samples per channel to read smooth (the
+        // visible plane is ~0.1% of whole-set area, split three ways). Mono
+        // single-channel is well within reach at 40M and gives clean cyan
+        // wisps tracing the elephant trunks. lifetime-spectrum already shows
+        // the RGB modality at whole-set scale where it works cleanly.
         mandel(-0.7454, 0.113, 0.04, 2000, "noir");
         c.interp = InterpMode::Oklab; c.bloom = 0.4;
-        c.nebula_rgb = true; c.nebula_accent = 1.4;
-        c.nebula_r = 5000; c.nebula_g = 400; c.nebula_b = 40;
-        c.nebula_accent_samples = 14.0;
+        c.nebula_accent = 1.5;
+        c.nebula_color = {0.4f, 0.85f, 1.0f}; // cool cyan wisps
+        c.nebula_accent_samples = 40.0;
     }
     // dragon-storm: Julia twin-dragon zoomed off-center so the asymmetric
     // buddhabrot fills the void. Density-driven bloom turns each spiral core
@@ -376,7 +382,10 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
         c.interp = InterpMode::Oklab; c.bloom = 0.4;
         c.nebula_rgb = true; c.nebula_accent = 0.8;
         c.nebula_r = 6000; c.nebula_g = 500; c.nebula_b = 50;
-        c.nebula_accent_samples = 12.0;
+        // RGB nebula at zoom is sample-hungry per channel (see nebula-elephant).
+        // At scale ~0.09, 40M samples gets the chromatic mist smooth instead of
+        // reading as shot noise.
+        c.nebula_accent_samples = 40.0;
         c.vignette = 0.3;
     }
     // Other iteration formulas (--formula). SAC coloring carries over to all the

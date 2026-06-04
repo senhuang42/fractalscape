@@ -68,6 +68,39 @@ int runRender(const fractal::RenderConfig& cfg) {
     //   mono (default) -> single-channel density tinted by uNebulaColor
     //   rgb            -> 3-channel R/G/B from three iter thresholds (lifetime)
     // Skip when --deep (CPU buddhabrot is float-precision, no df64 alignment).
+    auto smoothBuffer = [](std::vector<uint8_t>& rgb, int W, int H) {
+        // Separable 3-tap box blur on the nebula RGB buffer. Buddhabrot density
+        // is inherently smooth (it's a marginal of a continuous distribution),
+        // so the high-frequency speckle in the rendered buffer is purely shot
+        // noise from sparse sampling -- especially in RGB mode where each
+        // channel splits the sample budget further. A tiny box blur absorbs
+        // that noise without softening the underlying density structure.
+        if ((int)rgb.size() != W * H * 3) return;
+        std::vector<uint8_t> tmp(rgb.size());
+        for (int y = 0; y < H; ++y) {
+            for (int x = 0; x < W; ++x) {
+                int xm = std::max(0, x - 1), xp = std::min(W - 1, x + 1);
+                for (int c = 0; c < 3; ++c) {
+                    int s = rgb[(y * W + xm) * 3 + c]
+                          + rgb[(y * W + x ) * 3 + c]
+                          + rgb[(y * W + xp) * 3 + c];
+                    tmp[(y * W + x) * 3 + c] = (uint8_t)(s / 3);
+                }
+            }
+        }
+        for (int y = 0; y < H; ++y) {
+            int ym = std::max(0, y - 1), yp = std::min(H - 1, y + 1);
+            for (int x = 0; x < W; ++x) {
+                for (int c = 0; c < 3; ++c) {
+                    int s = tmp[(ym * W + x) * 3 + c]
+                          + tmp[(y  * W + x) * 3 + c]
+                          + tmp[(yp * W + x) * 3 + c];
+                    rgb[(y * W + x) * 3 + c] = (uint8_t)(s / 3);
+                }
+            }
+        }
+    };
+
     bool need_nebula = !cfg.deep &&
                        (cfg.nebula_accent > 0.0 || cfg.nebula_hue_shift != 0.0 ||
                         cfg.nebula_bloom > 0.0);
@@ -85,6 +118,15 @@ int runRender(const fractal::RenderConfig& cfg) {
                   << (cfg.nebula_rgb ? " (RGB lifetime mode)" : " (mono density)")
                   << "...\n";
         auto density = fractal::renderBuddhabrot(nb);
+        // RGB mode splits the sample budget across three channels, so per-
+        // channel shot noise is much worse -- especially at zoomed views
+        // where only a fraction of seeds land in the viewport. Stack passes
+        // (each is a 1x3 separable box; 4 passes -> ~gaussian sigma ~2.5
+        // pixels) when in RGB mode to absorb the chromatic speckle. The
+        // buddhabrot density is smooth at the pixel scale anyway so detail
+        // loss from blurring is invisible.
+        int passes = cfg.nebula_rgb ? 4 : 1;
+        for (int i = 0; i < passes; ++i) smoothBuffer(density, cfg.width, cfg.height);
         r.setNebulaTexture(density, cfg.width, cfg.height);
     } else {
         r.setNebulaTexture({}, 0, 0);
