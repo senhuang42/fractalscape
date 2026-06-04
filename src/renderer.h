@@ -33,6 +33,20 @@ public:
     // Upload the gradient (RGB8, `resolution` texels) as the palette texture.
     void setPalette(const std::vector<uint8_t>& rgb, int resolution);
 
+    // Optional second palette for the stripe (SAC) layer. Pass an empty buffer
+    // to clear it -- the shader then falls back to the main palette for stripe
+    // sampling (the original behavior).
+    void setStripePalette(const std::vector<uint8_t>& rgb, int resolution);
+
+    // Optional palette for set-interior coloring (only sampled when the config
+    // has color_inside enabled). Empty buffer clears it.
+    void setInsidePalette(const std::vector<uint8_t>& rgb, int resolution);
+
+    // Optional Buddhabrot density texture for the hybrid accent layer. RGB8,
+    // width*height*3 bytes, top-down (PNG order). Empty buffer clears it.
+    // Only sampled when the config's nebula_accent > 0.
+    void setNebulaTexture(const std::vector<uint8_t>& rgb, int width, int height);
+
     // Render one frame. Image dimensions must match init().
     void render(const RenderConfig& cfg);
 
@@ -60,6 +74,12 @@ private:
     unsigned int deep_prog_       = 0;
     unsigned int vao_             = 0;
     unsigned int palette_tex_     = 0;
+    unsigned int stripe_palette_tex_ = 0; // optional 2nd gradient for stripe layer
+    unsigned int inside_palette_tex_ = 0; // optional gradient for set interior
+    unsigned int nebula_tex_         = 0; // optional Buddhabrot density accent
+    bool         has_stripe_palette_ = false;
+    bool         has_inside_palette_ = false;
+    bool         has_nebula_         = false;
 
     unsigned int fbo_hi_ = 0, tex_hi_ = 0; // supersampled render target
     unsigned int fbo_lo_ = 0, tex_lo_ = 0; // resolved output

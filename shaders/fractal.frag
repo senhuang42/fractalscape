@@ -24,7 +24,17 @@ uniform int   uMaxIter;
 uniform float uBailout;      // escape radius
 uniform float uExponent;     // z^exponent + c
 
-uniform sampler2D uPalette;  // 1xN gradient (sampled along x)
+uniform sampler2D uPalette;  // 1xN gradient (sampled along x) -- iter layer
+uniform sampler2D uStripePalette; // gradient for the stripe (SAC) layer
+uniform sampler2D uInsidePalette; // gradient for set-interior coloring
+uniform sampler2D uNebulaTex;     // optional Buddhabrot density accent (R-channel)
+uniform bool      uHasStripePalette; // false -> reuse uPalette for stripe layer
+uniform bool      uColorInside;      // color set interior by SAC instead of flat
+uniform int       uPosterize;        // 0 = off, otherwise quantize sample pos
+uniform float     uNebulaWeight;     // strength of the nebula accent (0 = off)
+uniform vec3      uNebulaColor;      // wisp tint (multiplied by density); ignored in RGB mode
+uniform float     uNebulaHueShift;   // density modulates stripe sample position
+uniform bool      uNebulaRgb;        // sample full .rgb (3-channel nebula) vs .r (mono density)
 uniform float uColorDensity; // palette cycles per iteration unit
 uniform float uColorOffset;  // palette phase shift
 uniform float uAngleColor;   // weight of escape-angle in the palette coord
@@ -33,7 +43,7 @@ uniform vec2  uTrapPoint;    // orbit-trap location in the complex plane
 uniform float uStripeColor;   // gradient cycles the stripe value spans
 uniform float uStripeFreq;    // stripe density s (integer 4/6/8 looks best)
 uniform float uStripeContrast;// stretch stripe value around mid (the -mod knob)
-uniform vec3  uInsideColor;  // color for points in the set
+uniform vec3  uInsideColor;  // color for points in the set (when not uColorInside)
 
 uniform float uShading;      // diffuse light strength (0 = flat)
 uniform float uLightAngle;   // light azimuth, degrees
@@ -52,6 +62,23 @@ const float PI = 3.14159265358979;
 
 vec2 cmul(vec2 a, vec2 b) { return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }
 vec2 cdiv(vec2 a, vec2 b) { float d = dot(b, b); return vec2(a.x*b.x + a.y*b.y, a.y*b.x - a.x*b.y) / d; }
+
+// Quantize a gradient sample position s in [0,1] to N flat bands. Band index
+// is clamped to [0, N-1] before the +0.5 center offset, so s=1.0 lands in the
+// last band rather than rolling over into a phantom Nth band.
+float posterizeS(float s) {
+    if (uPosterize <= 1) return s;
+    float n = float(uPosterize);
+    float band = min(floor(s * n), n - 1.0);
+    return (band + 0.5) / n;
+}
+vec3 sampleIter(float s)   { return texture(uPalette,        vec2(posterizeS(s), 0.5)).rgb; }
+vec3 sampleStripe(float s) {
+    // GLSL 330: avoid ternary on sampler types; use a flat branch instead.
+    if (uHasStripePalette) return texture(uStripePalette, vec2(posterizeS(s), 0.5)).rgb;
+    return texture(uPalette, vec2(posterizeS(s), 0.5)).rgb;
+}
+vec3 sampleInside(float s) { return texture(uInsidePalette, vec2(posterizeS(s), 0.5)).rgb; }
 
 // Newton's method on z^3 - 1 = 0, colored by which of the three cube roots of
 // unity the orbit converges to (the basin) and how fast it got there. A
@@ -163,7 +190,17 @@ void main() {
     }
 
     if (i >= uMaxIter) {
-        FragColor = vec4(uInsideColor, 1.0);
+        // Set interior. Default is the flat uInsideColor; when uColorInside is
+        // on, color by the SAC-style stripe value the orbit accumulated -- so
+        // the set body becomes its own miniature scene instead of solid black.
+        if (uColorInside && useStripe && stripeN > 0) {
+            float sacIn = stripeSum / float(stripeN);
+            sacIn = (sacIn - 0.5) * uStripeContrast + 0.5;
+            float sIn = fract(clamp(sacIn, 0.0, 1.0) + uColorOffset);
+            FragColor = vec4(sampleInside(sIn), 1.0);
+        } else {
+            FragColor = vec4(uInsideColor, 1.0);
+        }
         return;
     }
 
@@ -207,21 +244,41 @@ void main() {
     float angle   = atan(z.y, z.x) / (2.0 * PI) + 0.5; // [0,1)
     stripeS = fract(stripeS + uAngleColor * angle + uTrapColor * trap + uColorOffset);
 
+    // Nebula hybrid: sample density ONCE up front; reused by both the hue-
+    // shift (modality 2, modifies stripeS before palette lookup) and the
+    // additive accent (modality 1, applied at end of main).
+    vec3  nebulaSample = vec3(0.0);
+    float nebulaDensity = 0.0;
+    if (uNebulaWeight > 0.0 || uNebulaHueShift != 0.0) {
+        vec2 nuv = gl_FragCoord.xy / uResolution;
+        // Buddhabrot output is top-down (PNG order); gl_FragCoord is bottom-up.
+        nebulaSample  = texture(uNebulaTex, vec2(nuv.x, 1.0 - nuv.y)).rgb;
+        nebulaDensity = uNebulaRgb ? max(max(nebulaSample.r, nebulaSample.g), nebulaSample.b)
+                                   : nebulaSample.r;
+        if (uNebulaHueShift != 0.0) {
+            stripeS = fract(stripeS + nebulaDensity * uNebulaHueShift);
+        }
+    }
+
     vec3 col;
     if (uColorDensity <= 0.0) {
-        col = texture(uPalette, vec2(stripeS, 0.5)).rgb;           // stripe alone
+        col = sampleStripe(stripeS);                               // stripe alone
     } else {
         // Iteration ramp: fast-escape gaps -> ~0, slow-escape structure -> ~1.
         float iterS = 1.0 - exp(-mu * uColorDensity);
         if (uStripeColor <= 0.0) {
-            col = texture(uPalette, vec2(iterS, 0.5)).rgb;         // iteration alone
+            col = sampleIter(iterS);                               // iteration alone
         } else {
             // Gate the stripe relief by the iteration layer: a smoothstep mask
             // that is ~0 only in the true empty gaps and ~1 across structure
             // AND the faint tendrils, so the relief shows at full brightness on
-            // the structure while the void stays black.
-            vec3  stripeCol = texture(uPalette, vec2(stripeS, 0.5)).rgb;
-            vec3  iterCol   = texture(uPalette, vec2(iterS,   0.5)).rgb;
+            // the structure while the void stays black. The stripe layer may
+            // sample a SECOND palette (uStripePalette) -- that is what makes the
+            // dual-palette presets work: iter draws the FIELD from uPalette,
+            // stripe draws the STRUCTURE from uStripePalette, giving the field
+            // and the spirals genuinely different hues.
+            vec3  stripeCol = sampleStripe(stripeS);
+            vec3  iterCol   = sampleIter(iterS);
             float gate = smoothstep(0.20, 0.62, iterS);
             col = mix(iterCol, stripeCol * gate, uStripeColor);
         }
@@ -265,6 +322,18 @@ void main() {
             float g = exp(-dpix * dpix * 0.5);
             col += uGlow * g * texture(uPalette, vec2(fract(uColorOffset + 0.5), 0.5)).rgb;
         }
+    }
+
+    // Hybrid accent (modality 1, density add). nebulaSample/Density were
+    // already fetched above to share the texture read with the hue-shift
+    // modality. In mono mode (uNebulaRgb=false) we tint a single density value
+    // by uNebulaColor; in RGB mode we add the per-channel densities directly,
+    // so wisps are multi-hued by orbit lifetime (each channel was rendered at
+    // a different iteration threshold).
+    if (uNebulaWeight > 0.0) {
+        vec3 add = uNebulaRgb ? nebulaSample
+                              : (nebulaDensity * uNebulaColor);
+        col += add * uNebulaWeight;
     }
 
     FragColor = vec4(col, 1.0);

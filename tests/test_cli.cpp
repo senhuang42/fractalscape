@@ -203,6 +203,54 @@ void test_cli() {
     }
     CHECK(!parse({"render", "-P", "bogus"}).error.empty());
 
+    // ---- expanded coloring vocabulary ----
+    // Defaults preserve old behavior: rgb interp, no stripe/inside palettes,
+    // posterize off, color_inside off.
+    {
+        auto p = parse({"render"});
+        CHECK(p.error.empty());
+        CHECK(p.render.interp == InterpMode::Rgb);
+        CHECK(p.render.stripe_palette.empty());
+        CHECK(p.render.inside_palette.empty());
+        CHECK(p.render.posterize == 0);
+        CHECK(p.render.color_inside == false);
+    }
+    // Each new flag parses into the right field.
+    {
+        auto p = parse({"render", "--interp", "oklab", "--posterize", "8",
+                        "--stripe-palette", "arctic", "--color-inside",
+                        "--inside-palette", "#000000,#ff0000"});
+        CHECK(p.error.empty());
+        CHECK(p.render.interp == InterpMode::Oklab);
+        CHECK(p.render.posterize == 8);
+        CHECK(p.render.color_inside);
+        CHECK(p.render.stripe_palette.size() >= 2);
+        CHECK(p.render.inside_palette.size() == 2);
+    }
+    // Bad values rejected.
+    CHECK(!parse({"render", "--interp", "lab"}).error.empty());
+    CHECK(!parse({"render", "--posterize", "-1"}).error.empty());
+    CHECK(!parse({"render", "--stripe-palette", "nope"}).error.empty());
+
+    // ---- new style presets exist and apply their key flags ----
+    {
+        auto p = parse({"render", "-P", "stained-glass"});
+        CHECK(p.error.empty());
+        CHECK(p.render.interp == InterpMode::Oklab);
+        CHECK(p.render.posterize > 0);
+    }
+    {
+        auto p = parse({"render", "-P", "frost-ember"});
+        CHECK(p.error.empty());
+        CHECK(!p.render.stripe_palette.empty()); // dual palette
+    }
+    {
+        auto p = parse({"render", "-P", "interior-bloom"});
+        CHECK(p.error.empty());
+        CHECK(p.render.color_inside);
+        CHECK(!p.render.inside_palette.empty());
+    }
+
     // ---- error handling ----
     CHECK(!parse({"render", "--type", "bogus"}).error.empty());
     CHECK(!parse({"render", "-i", "abc"}).error.empty());     // non-integer

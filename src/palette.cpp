@@ -93,6 +93,18 @@ const std::map<std::string, std::vector<std::string>>& namedPalettes() {
         // and deep relief stay dark -> full contrast instead of a washed haze.
         {"gruvbox",     {"#0d0b08", "#3c1a0a", "#cc241d", "#d65d0e", "#d79921", "#fbf1c7"}},
         {"autumn",      {"#1a0e08", "#4a1c10", "#8a3324", "#c1440e", "#e08e0b", "#f7d08a"}},
+        // Orange-flame-red dominant FIELD with electric-blue SPIRAL ARMS, the
+        // way the neon palette gives cyan field + magenta spirals. The trick is
+        // a warm-cool-warm layout: cool stops (violet, blue) sit at palette
+        // position ~0.4 -- where the stripe (SAC) layer samples for spiral arms
+        // and high-iter structure -- while warm stops (vermillion, orange) sit
+        // at ~0.6-0.85, where the iter layer samples for the bulk field. So
+        // field and structure get visibly DIFFERENT colors instead of grading
+        // through the same hue. Cool break placement matters more than gradient
+        // smoothness here -- the warm->cool->warm jump shows mostly as a halo
+        // around structures, not as a banded gradient. Yellow tip at the top
+        // for the hottest cores. Built for the "burn" album.
+        {"burn",        {"#02030f", "#5e0a08", "#c4180a", "#5a48d6", "#4090ff", "#ff5c14", "#ff9a2e", "#ffb83a", "#ffd84a"}},
         // Deeper anchor and more saturated rose mids than the old dusty version,
         // which read as low-contrast.
         {"rosegold",    {"#150509", "#4a142a", "#962f56", "#d4486f", "#ef8e8a", "#fbd9c4"}},
@@ -102,6 +114,29 @@ const std::map<std::string, std::vector<std::string>>& namedPalettes() {
         {"psychedelic", {"#000010", "#ff006e", "#fb5607", "#ffbe0b", "#8ac926", "#3a86ff", "#8338ec"}},
         // Monochrome grayscale.
         {"mono",        {"#000000", "#ffffff"}},
+        // High-voltage cyan/magenta on black with a white peak. Built for the
+        // cyberpunk preset; pairs well with --posterize 4 for a Tron-grid look.
+        {"electric",    {"#000010", "#0040c4", "#00e0ff", "#ff20cc", "#ffffff"}},
+        // Electric green ramp. Designed as a tropical-stripe partner for vice:
+        // hot fuchsia field + electric lime spiral arms is a high-saturation
+        // complementary pop you cannot get from a single ramp.
+        {"lime",        {"#000005", "#003a14", "#22a830", "#80ff20", "#e0ff80"}},
+        // Risograph print palette: federal blue + fluorescent pink + sunflower
+        // yellow on cream/black -- the canonical 3-color riso aesthetic. Looks
+        // best with --posterize 4 or 5 so it reads as actual ink layers.
+        {"riso",        {"#0a0a14", "#0050ff", "#ff3399", "#ffd000", "#fafafa"}},
+        // Mid-century atomic: dark teal grounding, burnt-orange + mustard
+        // mids, cream highlight. Reads as Eames / "Mad Men" with --posterize 5.
+        {"atomic",      {"#0a1818", "#1a4a4a", "#d8782a", "#f0c850", "#f5f0d8"}},
+        // Saturated jewel-tones for posterization / stained-glass renders. Each
+        // stop is a distinct gem hue, designed to read as DISTINCT BLOCKS rather
+        // than a gradient when quantized: dark anchor, sapphire, emerald, ruby,
+        // citrine, amethyst. Pairs well with --posterize 6..8 + Oklab interp.
+        {"jewel",       {"#0a0612", "#1c4ec0", "#0fa05a", "#d62a2e", "#ffc846", "#7a32c8"}},
+        // Cool counterpart to `ember`, for warm/cool dual-palette pairings:
+        // pass ember as the main palette and arctic as --stripe-palette (or vice
+        // versa) for a warm-field, cool-structure (or inverse) composition.
+        {"arctic",      {"#04060a", "#0a2848", "#1e5e96", "#54aedc", "#a8e0f0", "#e8f8ff"}},
     };
     return kPalettes;
 }
@@ -168,8 +203,49 @@ std::vector<std::string> builtinPaletteNames() {
     return names;
 }
 
+// --- Oklab color-space conversion ---------------------------------------
+// Bjorn Ottosson's Oklab (https://bottosson.github.io/posts/oklab/). It is a
+// perceptually-uniform LMS-based color space: interpolating between two colors
+// in Oklab keeps the midpoint hues saturated instead of dipping through grey,
+// which is what makes red->blue cross via clean magenta instead of mud.
+//
+// Pipeline used here: sRGB byte/float (the stored stops) -> linear-light sRGB
+// (gamma decode, gamma 2.2 approximation is intentionally avoided since 2.4
+// piecewise is what photographs use) -> Oklab -> lerp -> linear sRGB ->
+// gamma-encoded sRGB -> byte. Done in doubles throughout; the math is cheap.
+
+static double srgb_to_linear(double c) {
+    return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+}
+static double linear_to_srgb(double c) {
+    return c <= 0.0031308 ? 12.92 * c : 1.055 * std::pow(c, 1.0 / 2.4) - 0.055;
+}
+
+struct OkLab { double L, a, b; };
+
+static OkLab linearRgbToOklab(double r, double g, double b) {
+    double l = 0.4122214708*r + 0.5363325363*g + 0.0514459929*b;
+    double m = 0.2119034982*r + 0.6806995451*g + 0.1073969566*b;
+    double s = 0.0883024619*r + 0.2817188376*g + 0.6299787005*b;
+    double l_ = std::cbrt(l), m_ = std::cbrt(m), s_ = std::cbrt(s);
+    return OkLab{
+        0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_,
+        1.9779984951*l_ - 2.4285922050*m_ + 0.4505937099*s_,
+        0.0259040371*l_ + 0.7827717662*m_ - 0.8086757660*s_};
+}
+static void oklabToLinearRgb(const OkLab& v, double& r, double& g, double& b) {
+    double l_ = v.L + 0.3963377774*v.a + 0.2158037573*v.b;
+    double m_ = v.L - 0.1055613458*v.a - 0.0638541728*v.b;
+    double s_ = v.L - 0.0894841775*v.a - 1.2914855480*v.b;
+    double l = l_*l_*l_, m = m_*m_*m_, s = s_*s_*s_;
+    r =  4.0767416621*l - 3.3077115913*m + 0.2309699292*s;
+    g = -1.2684380046*l + 2.6097574011*m - 0.3413193965*s;
+    b = -0.0041960863*l - 0.7034186147*m + 1.7076147010*s;
+}
+
 std::vector<uint8_t> buildGradient(const std::vector<Color>& stops,
-                                   int resolution, bool cyclic) {
+                                   int resolution, bool cyclic,
+                                   InterpMode interp, int posterize) {
     std::vector<uint8_t> data;
     if (stops.empty() || resolution <= 0) return data;
 
@@ -190,17 +266,60 @@ std::vector<uint8_t> buildGradient(const std::vector<Color>& stops,
         return data;
     }
 
+    // For Oklab interp, pre-convert each stop. For Rgb, we lerp the sRGB values
+    // directly (faster, and what the original behavior was).
+    std::vector<OkLab> stopsLab;
+    if (interp == InterpMode::Oklab) {
+        stopsLab.reserve(s.size());
+        for (const auto& c : s) {
+            double r = srgb_to_linear(std::clamp((double)c.r, 0.0, 1.0));
+            double g = srgb_to_linear(std::clamp((double)c.g, 0.0, 1.0));
+            double b = srgb_to_linear(std::clamp((double)c.b, 0.0, 1.0));
+            stopsLab.push_back(linearRgbToOklab(r, g, b));
+        }
+    }
+
+    // Clamp posterize to 0 (off) or [2, 1024]. <2 has no useful effect.
+    const int post = (posterize >= 2) ? std::min(posterize, 1024) : 0;
+
     for (int i = 0; i < resolution; ++i) {
-        // Position in [0, segments].
-        double t = (resolution == 1) ? 0.0
-                 : (static_cast<double>(i) / (resolution - 1)) * segments;
+        // Position in [0, 1] across the gradient, optionally posterized.
+        double u = (resolution == 1) ? 0.0
+                 : static_cast<double>(i) / (resolution - 1);
+        if (post > 0) {
+            // Snap to N bands. Clamp the band index to [0, N-1] BEFORE adding
+            // the +0.5 center offset, so the u=1.0 edge doesn't fall into a
+            // bogus Nth band that just rounds to "the last color." Result is
+            // exactly N distinct output colors, sampled at each band's center.
+            double band = std::floor(u * post);
+            if (band > post - 1) band = post - 1;
+            u = (band + 0.5) / post;
+        }
+        double t = u * segments;
         int idx = std::min(static_cast<int>(t), segments - 1);
         double f = t - idx;
-        const Color& a = s[idx];
-        const Color& b = s[idx + 1];
-        double r = a.r + (b.r - a.r) * f;
-        double g = a.g + (b.g - a.g) * f;
-        double bl = a.b + (b.b - a.b) * f;
+
+        double r, g, bl;
+        if (interp == InterpMode::Oklab) {
+            const OkLab& A = stopsLab[idx];
+            const OkLab& B = stopsLab[idx + 1];
+            OkLab mid{A.L + (B.L - A.L) * f,
+                      A.a + (B.a - A.a) * f,
+                      A.b + (B.b - A.b) * f};
+            double lr, lg, lb;
+            oklabToLinearRgb(mid, lr, lg, lb);
+            // Out-of-gamut Oklab points can produce negative linear RGB; clamp
+            // before encoding so we don't roll over to bogus sRGB values.
+            r  = linear_to_srgb(std::clamp(lr, 0.0, 1.0));
+            g  = linear_to_srgb(std::clamp(lg, 0.0, 1.0));
+            bl = linear_to_srgb(std::clamp(lb, 0.0, 1.0));
+        } else {
+            const Color& a = s[idx];
+            const Color& b = s[idx + 1];
+            r  = a.r + (b.r - a.r) * f;
+            g  = a.g + (b.g - a.g) * f;
+            bl = a.b + (b.b - a.b) * f;
+        }
         data[i*3+0] = static_cast<uint8_t>(std::lround(std::clamp(r,  0.0, 1.0) * 255.0));
         data[i*3+1] = static_cast<uint8_t>(std::lround(std::clamp(g,  0.0, 1.0) * 255.0));
         data[i*3+2] = static_cast<uint8_t>(std::lround(std::clamp(bl, 0.0, 1.0) * 255.0));

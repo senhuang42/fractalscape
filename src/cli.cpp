@@ -103,6 +103,282 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
         c.cyclic = true; c.bloom = 0.75; c.bloom_threshold = 0.35;
         c.vignette = 0.4; c.grain = 0.025;
     }
+    // --- Style presets exercising the expanded coloring vocabulary ----------
+    // Each combines flags that are off by default (Oklab interp, dual palettes,
+    // posterization, inside coloring) so the look is qualitatively different
+    // from anything the original 1-palette presets can produce.
+    //
+    // stained-glass: hard color bands of saturated jewel hues. Posterize gives
+    // the screen-print blocks; Oklab keeps each band cleanly saturated; the
+    // jewel palette is designed with distinct stops that READ as blocks.
+    else if (name == "stained-glass") {
+        julia(-0.7269, 0.1889, 1.10, 2000, "jewel");
+        c.cyclic = true; c.interp = InterpMode::Oklab; c.posterize = 7;
+        c.stripe_contrast = 3.0; c.bloom = 0.2;
+    }
+    // etching: ink-on-paper monochrome. Mono palette + posterize 5 + high
+    // stripe freq packs the orbit-angle bands into discrete tone steps.
+    else if (name == "etching") {
+        mandel(-0.74364388703, 0.13182590421, 1.35 / 80.0, 2200, "mono");
+        c.posterize = 5; c.stripe_freq = 9.0; c.stripe_contrast = 3.4;
+        c.bloom = 0.0; c.color_density = 0.05;
+    }
+    // frost-ember: dual-palette warm/cool split. The iter layer draws the FIELD
+    // in cool ice/blue (frost palette); the stripe layer draws the STRUCTURE in
+    // warm fire (ember palette). Inverse of `solar-flare`.
+    //   stripe_color < 1 is REQUIRED for dual-palette to show both: at the
+    //   default 1.0, the overlay collapses to stripeCol*gate and the iter
+    //   palette's hue never appears. 0.55 keeps the stripe structure but lets
+    //   the iter field tone through underneath.
+    else if (name == "frost-ember") {
+        julia(-0.512511, 0.521295, 1.30, 2000, "frost");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stripe_contrast = 3.0; c.stripe_color = 0.55;
+        parsePalette("ember", c.stripe_palette);
+    }
+    // solar-flare: dual-palette warm-field, cool-structure. Ember field, arctic
+    // spiral arms -- like burn but with a smoother contrast through Oklab.
+    else if (name == "solar-flare") {
+        mandel(-0.74364388703, 0.13182590421, 1.35 / 120.0, 2200, "ember");
+        c.interp = InterpMode::Oklab; c.stripe_contrast = 3.0; c.bloom = 0.35;
+        c.stripe_color = 0.55;
+        parsePalette("arctic", c.stripe_palette);
+    }
+    // interior-bloom: shows the set INTERIOR colored by SAC instead of flat
+    // black. The exterior gets ember (warm), the interior gets galaxy (deep
+    // violet -> white), so the set body becomes its own miniature scene.
+    // Uses the Douady rabbit (c=-0.122+0.745i) -- a CONNECTED Julia with a
+    // substantial three-ear interior body. Dendrite-like Julia constants have
+    // almost no interior so color_inside would have nothing to color.
+    else if (name == "interior-bloom") {
+        julia(-0.122, 0.745, 1.40, 1500, "ember");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.color_inside = true;
+        parsePalette("galaxy", c.inside_palette);
+        c.bloom = 0.3;
+    }
+    // oil-painting: low-contrast warm field with soft posterized bands -- the
+    // discrete tone steps read as oil brush strokes rather than smooth ramps.
+    else if (name == "oil-painting") {
+        julia(-0.8, 0.156, 1.30, 2000, "autumn");
+        c.interp = InterpMode::Oklab; c.posterize = 12;
+        c.stripe_contrast = 2.0; c.bloom = 0.25; c.grain = 0.04;
+    }
+    // --- Vibrant aesthetic combos (Oklab + dual-palette / posterize / interior)
+    // Every one is intentionally opinionated: a single color story, not a
+    // generic ramp. All set --interp oklab so opposed hues stay saturated
+    // through their midpoints; dual-palette presets keep stripe_color in (0,1)
+    // so BOTH palette contributions actually appear (at 1.0 the iter palette
+    // hue collapses away).
+
+    // tropical: hot fuchsia field, electric lime spiral arms. Classic
+    // complementary pair (the fuchsia-green axis) -- one of the most vivid
+    // visual contrasts you can pull from this fractal vocabulary.
+    else if (name == "tropical") {
+        julia(-0.512511, 0.521295, 1.30, 2000, "vice");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stripe_color = 0.6; c.stripe_contrast = 3.0; c.bloom = 0.3;
+        parsePalette("lime", c.stripe_palette);
+    }
+    // cyberpunk: black + electric cyan/magenta + white peaks. Single palette,
+    // very saturated, reads like neon signage at night.
+    else if (name == "cyberpunk") {
+        julia(-0.7269, 0.1889, 1.10, 2500, "electric");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stripe_contrast = 3.4; c.bloom = 0.4;
+    }
+    // persimmon: burnt orange field, forest emerald spiral arms. A muted
+    // complementary (orange/green) — bolder than the autumn preset and with the
+    // dual palette giving genuinely separate hues for field vs structure.
+    else if (name == "persimmon") {
+        julia(-0.8, 0.156, 1.30, 2000, "ember");
+        c.interp = InterpMode::Oklab;
+        c.stripe_color = 0.6; c.stripe_contrast = 2.8; c.bloom = 0.3;
+        parsePalette("emerald", c.stripe_palette);
+    }
+    // reef: coral pink field with deep teal spiral arms. The shallow-water
+    // photo aesthetic -- bright warm with cool depths.
+    else if (name == "reef") {
+        julia(-0.7269, 0.1889, 1.10, 2500, "candy");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stripe_color = 0.55; c.stripe_contrast = 3.0; c.bloom = 0.35;
+        parsePalette("ocean", c.stripe_palette);
+    }
+    // cosmic-yellow: deep galaxy violet field with golden spiral structure.
+    // Yellow-violet is a high-contrast color-theory complementary pair.
+    else if (name == "cosmic-yellow") {
+        julia(-0.123, 0.745, 1.40, 2000, "galaxy");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stripe_color = 0.55; c.stripe_contrast = 3.0; c.bloom = 0.35;
+        parsePalette("gold", c.stripe_palette);
+    }
+    // risograph: 3-color print look (federal blue, fluorescent pink, sunflower
+    // yellow on cream). Posterize 4 gives the band-like ink layering.
+    else if (name == "risograph") {
+        mandel(-0.74364388703, 0.13182590421, 1.35 / 80.0, 2200, "riso");
+        c.interp = InterpMode::Oklab; c.posterize = 4;
+        c.stripe_contrast = 3.0; c.bloom = 0.0;
+    }
+    // mid-century: Eames-era teal/orange/mustard atomic palette with hard
+    // posterized bands. Reads as a 1960s screen-printed travel poster.
+    else if (name == "mid-century") {
+        julia(-0.74543, 0.11301, 1.25, 2000, "atomic");
+        c.interp = InterpMode::Oklab; c.posterize = 5;
+        c.stripe_contrast = 3.0; c.bloom = 0.15;
+    }
+    // lava-lake: extreme heat-cold inversion. Set INTERIOR is iced over (ice
+    // palette inside) while the exterior burns (fire palette outside). Shows
+    // the color_inside mechanism at maximum contrast.
+    else if (name == "lava-lake") {
+        julia(-0.122, 0.745, 1.40, 1500, "fire");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.color_inside = true; c.bloom = 0.35;
+        parsePalette("ice", c.inside_palette);
+    }
+    // magma-core: dark mono exterior, magma glowing INSIDE the set. Like
+    // looking at a planet whose crust is dark stone but the interior glows
+    // molten through the cracks at the edges.
+    else if (name == "magma-core") {
+        julia(-0.122, 0.745, 1.40, 1500, "noir");
+        c.cyclic = false; c.interp = InterpMode::Oklab;
+        c.color_inside = true; c.bloom = 0.4;
+        parsePalette("magma", c.inside_palette);
+    }
+    // vaporwave-poster: vapor palette posterized to discrete bands. Pink/cyan/
+    // violet rectangles like a Surfaces / Mac Plus album cover.
+    else if (name == "vaporwave-poster") {
+        julia(-0.512511, 0.521295, 1.30, 1800, "vapor");
+        c.cyclic = true; c.interp = InterpMode::Oklab; c.posterize = 7;
+        c.stripe_contrast = 3.0; c.bloom = 0.25;
+    }
+    // --- Hybrid (escape-time + Buddhabrot) presets --------------------------
+    // These pre-render the Buddhabrot to overlay orbit-density information
+    // that no per-pixel computation can produce. CPU+GPU two-stage; not deep.
+    //
+    // nebula-ghost: art-print Mandelbrot. Black silhouette on a violet haze of
+    // orbit wisps. The fractal's magma exterior is mostly dark at this view,
+    // so the nebula carries the color story. Modality 1 (direct accent).
+    else if (name == "nebula-ghost") {
+        mandel(-0.5, 0.0, 1.4, 800, "magma");
+        c.interp = InterpMode::Oklab; c.bloom = 0.3;
+        c.nebula_accent = 1.0; c.nebula_color = {0.62f, 0.13f, 1.0f}; // violet
+        c.nebula_accent_samples = 10.0;
+    }
+    // lifetime-spectrum: 3-channel Buddhabrot painting the deep-space view.
+    // R = short-lived orbits, G = mid, B = long-lived. The dark noir exterior
+    // makes the wisps THE image. Modality 4 (RGB nebula).
+    else if (name == "lifetime-spectrum") {
+        mandel(-0.5, 0.0, 1.5, 600, "noir");
+        c.interp = InterpMode::Oklab; c.bloom = 0.4;
+        c.nebula_rgb = true; c.nebula_accent = 1.5;
+        c.nebula_r = 6000; c.nebula_g = 600; c.nebula_b = 60;
+        c.nebula_accent_samples = 12.0;
+    }
+    // hue-tide: density modulates the stripe palette sample so the hue of the
+    // spiral arms shifts where orbits piled up -- like a tide of color
+    // following the trajectory flow. Modality 2 (hue shift) with a tiny
+    // accent to also see WHERE density is.
+    else if (name == "hue-tide") {
+        julia(-0.7269, 0.1889, 1.10, 2500, "neon");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stripe_contrast = 3.0; c.bloom = 0.3;
+        c.nebula_hue_shift = 0.18; c.nebula_accent = 0.15;
+        c.nebula_color = {1, 1, 1};
+        c.nebula_accent_samples = 8.0;
+    }
+    // nebula-aurora: maximalist. Density drives BOTH a hue shift AND a bloom
+    // mask, so the bright glow follows orbit hot spots while the colors shift
+    // through them. The fractal structure stays sharp underneath the diffuse
+    // aurora-like glow above it. Modalities 2 + 3 stacked.
+    else if (name == "nebula-aurora") {
+        julia(-0.512511, 0.521295, 1.30, 2000, "vice");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stripe_contrast = 3.0;
+        c.bloom = 0.5; c.bloom_threshold = 0.35;
+        c.nebula_hue_shift = 0.12;
+        c.nebula_bloom = 1.8;
+        c.nebula_color = {1.0f, 0.85f, 0.4f}; // gold tinted bloom
+        c.nebula_accent_samples = 10.0;
+        c.vignette = 0.4;
+    }
+    // --- Zoomed hybrid presets: nebula at scales where fractal structure is
+    // intricate (still float-precision since the CPU buddhabrot can't align
+    // under --deep). Wisps weave THROUGH the structure rather than around the
+    // whole set; the hybrid character is most visible here.
+
+    // nebula-seahorse: Mandelbrot seahorse valley with violet wisps traced
+    // through the tail. Cover-hero framing + nebula accent.
+    else if (name == "nebula-seahorse") {
+        mandel(-0.74364388703, 0.13182590421, 1.35 / 120.0, 2200, "vice");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.bloom = 0.35; c.vignette = 0.4;
+        c.nebula_accent = 0.7; c.nebula_color = {0.65f, 0.2f, 1.0f};
+        c.nebula_accent_samples = 12.0;
+    }
+    // nebula-elephant: Mandelbrot elephant valley with 3-channel RGB nebula
+    // tracing trunks in different orbit-lifetime bands. Rich multi-hue wisps.
+    else if (name == "nebula-elephant") {
+        mandel(-0.7454, 0.113, 0.04, 2000, "noir");
+        c.interp = InterpMode::Oklab; c.bloom = 0.4;
+        c.nebula_rgb = true; c.nebula_accent = 1.4;
+        c.nebula_r = 5000; c.nebula_g = 400; c.nebula_b = 40;
+        c.nebula_accent_samples = 14.0;
+    }
+    // dragon-storm: Julia twin-dragon zoomed off-center so the asymmetric
+    // buddhabrot fills the void. Density-driven bloom turns each spiral core
+    // into a lightning flash. (Julia buddhabrot has no mirror symmetry --
+    // gives a more dramatic asymmetric density distribution than Mandelbrot.)
+    else if (name == "dragon-storm") {
+        julia(-0.512511, 0.521295, 0.7, 2000, "electric");
+        c.center_x = 0.3; c.center_y = -0.1;
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stripe_contrast = 3.2;
+        c.bloom = 0.5; c.bloom_threshold = 0.4;
+        c.nebula_bloom = 1.6;
+        c.nebula_color = {0.5f, 0.9f, 1.0f};
+        c.nebula_accent_samples = 10.0;
+    }
+    // rabbit-ember: Douady rabbit zoomed into the ear junction with the whole
+    // hybrid stack: COLORED INTERIOR (ember palette inside the set body) plus
+    // nebula hue-shift modulating the exterior so density traces hue zones.
+    // Two distinct color stories layered.
+    else if (name == "rabbit-ember") {
+        julia(-0.122, 0.745, 0.6, 1500, "frost");
+        c.center_x = 0.0; c.center_y = 0.55;
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.color_inside = true;
+        parsePalette("ember", c.inside_palette);
+        c.nebula_hue_shift = 0.15; c.nebula_accent = 0.25;
+        c.nebula_color = {1, 1, 1};
+        c.nebula_accent_samples = 10.0;
+        c.bloom = 0.35;
+    }
+    // dendrite-glow: dendrite Julia zoomed into one spiral, with all three
+    // density modalities at low strength. Subtle but the layered effect gives
+    // the dendrite a sense of motion / atmospheric depth that pure escape-
+    // time can't reach.
+    else if (name == "dendrite-glow") {
+        julia(-0.7269, 0.1889, 0.5, 2500, "neon-dark");
+        c.center_x = -0.3; c.center_y = 0.1;
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stripe_contrast = 3.0;
+        c.bloom = 0.4; c.bloom_threshold = 0.4;
+        c.nebula_accent = 0.4; c.nebula_color = {0.4f, 1.0f, 0.7f}; // mint
+        c.nebula_hue_shift = 0.08;
+        c.nebula_bloom = 0.8;
+        c.nebula_accent_samples = 10.0;
+    }
+    // plasma-storm: Mandelbrot in the inferno-valley zoom with RGB nebula on
+    // top of an inferno palette. The R/G/B wisps add chromatic mist over an
+    // already vivid escape-time render -- maximalist hybrid.
+    else if (name == "plasma-storm") {
+        mandel(-0.748, 0.1, 0.09, 2500, "inferno");
+        c.interp = InterpMode::Oklab; c.bloom = 0.4;
+        c.nebula_rgb = true; c.nebula_accent = 0.8;
+        c.nebula_r = 6000; c.nebula_g = 500; c.nebula_b = 50;
+        c.nebula_accent_samples = 12.0;
+        c.vignette = 0.3;
+    }
     // Other iteration formulas (--formula). SAC coloring carries over to all the
     // escape-time ones; Newton has its own basin coloring.
     else if (name == "burning-ship") { // the "armada", reflected and jagged
@@ -128,6 +404,13 @@ const std::vector<std::string>& presetNames() {
         "synthwave", "nord", "dracula", "gruvbox", "autumn", "rosegold",
         "galaxy", "mint", "acid-swirl",
         "cover-mandala", "cover-hero", "cover-glitch", "cover-cosmic",
+        "stained-glass", "etching", "frost-ember", "solar-flare",
+        "interior-bloom", "oil-painting",
+        "tropical", "cyberpunk", "persimmon", "reef", "cosmic-yellow",
+        "risograph", "mid-century", "lava-lake", "magma-core", "vaporwave-poster",
+        "nebula-ghost", "lifetime-spectrum", "hue-tide", "nebula-aurora",
+        "nebula-seahorse", "nebula-elephant", "dragon-storm", "rabbit-ember",
+        "dendrite-glow", "plasma-storm",
         "burning-ship", "phoenix", "newton",
     };
     return kNames;
@@ -205,6 +488,38 @@ COMMON OPTIONS
       --bloom <float>             Luminous bloom strength    (default: 0.3)
       --bloom-threshold <float>   Brightness to bloom        (default: 0.5)
       --falloff <float>           Exterior fade-to-void      (default: 0)
+
+  EXPANDED COLORING (additive; everything off-by-default preserves old behavior)
+      --interp <rgb|oklab>        Gradient interpolation space (default: rgb).
+                                  oklab keeps opposed hues clean instead of
+                                  passing through grey/brown.
+      --stripe-palette <spec>     Separate palette for the stripe layer (default:
+                                  reuse main). Pair `-p ember --stripe-palette
+                                  arctic` for warm field, cool spirals.
+      --posterize <int>           Quantize gradient to N flat bands (default: 0/
+                                  off, otherwise 2..32). Screen-print / stained-
+                                  glass look; great with --interp oklab.
+      --color-inside              Color set INTERIOR by orbit SAC instead of
+                                  --inside flat. Off by default.
+      --inside-palette <spec>     Palette for set interior when --color-inside
+                                  (default: reuse main palette).
+      --nebula-accent <float>     Overlay a Buddhabrot orbit-density "ghost"
+                                  layer on top of the escape-time render
+                                  (default: 0/off). A genuinely orthogonal
+                                  color axis: density depends on what NEIGHBOR
+                                  orbits do, not the pixel's own.
+      --nebula-color <hex>        Wisp tint (default: #ffffff).
+      --nebula-accent-samples <f> Millions of CPU samples for the nebula pre-
+                                  pass (default: 8). Higher = smoother wisps,
+                                  longer pre-render.
+      --nebula-hue-shift <float>  Density modulates stripe palette sample so
+                                  hue shifts trace orbit density (default: 0).
+      --nebula-bloom <float>      Density adds to bloom bright-pass mask --
+                                  wisps glow regardless of pixel brightness
+                                  (default: 0). Needs --bloom > 0.
+      --nebula-rgb                Use 3-channel Nebulabrot as accent: wisps are
+                                  multi-hued by orbit lifetime (--nebula-r/g/b
+                                  thresholds apply). Disables --nebula-color.
 
   ALBUM-ART / DESIGN LAYER (all off at 0; see the cover-* presets)
       --kaleido <float>           N mirrored wedges -> mandala (default: 0/off)
@@ -418,6 +733,35 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "--bloom")      { if (!cur.nextDouble(flag, cfg.bloom)) break; }
         else if (flag == "--bloom-threshold") { if (!cur.nextDouble(flag, cfg.bloom_threshold)) break; }
         else if (flag == "--falloff")    { if (!cur.nextDouble(flag, cfg.falloff)) break; }
+        // ---- expanded coloring vocabulary ----
+        else if (flag == "--interp") {
+            std::string v; if (!cur.nextStr(flag, v)) break;
+            if (v == "rgb")        cfg.interp = InterpMode::Rgb;
+            else if (v == "oklab") cfg.interp = InterpMode::Oklab;
+            else { fail("--interp must be rgb or oklab; got '" + v + "'"); break; }
+        }
+        else if (flag == "--stripe-palette") {
+            std::string v; if (!cur.nextStr(flag, v)) break;
+            if (!parsePalette(v, cfg.stripe_palette)) { fail("--stripe-palette: unknown name or invalid hex list: '" + v + "'"); break; }
+        }
+        else if (flag == "--posterize") {
+            if (!cur.nextInt(flag, cfg.posterize)) break;
+            if (cfg.posterize < 0) { fail("--posterize must be >= 0 (0 = off, otherwise 2..)"); break; }
+        }
+        else if (flag == "--color-inside") { cfg.color_inside = true; }
+        else if (flag == "--inside-palette") {
+            std::string v; if (!cur.nextStr(flag, v)) break;
+            if (!parsePalette(v, cfg.inside_palette)) { fail("--inside-palette: unknown name or invalid hex list: '" + v + "'"); break; }
+        }
+        else if (flag == "--nebula-accent")  { if (!cur.nextDouble(flag, cfg.nebula_accent)) break; }
+        else if (flag == "--nebula-color")   {
+            std::string v; if (!cur.nextStr(flag, v)) break;
+            if (!parseHexColor(v, cfg.nebula_color)) { fail("--nebula-color must be a hex color, got '" + v + "'"); break; }
+        }
+        else if (flag == "--nebula-accent-samples") { if (!cur.nextDouble(flag, cfg.nebula_accent_samples)) break; }
+        else if (flag == "--nebula-hue-shift") { if (!cur.nextDouble(flag, cfg.nebula_hue_shift)) break; }
+        else if (flag == "--nebula-bloom")     { if (!cur.nextDouble(flag, cfg.nebula_bloom)) break; }
+        else if (flag == "--nebula-rgb")       { cfg.nebula_rgb = true; }
         // ---- album-art / design layer ----
         else if (flag == "--kaleido")    { if (!cur.nextDouble(flag, cfg.kaleido)) break; }
         else if (flag == "--kaleido-angle"){ if (!cur.nextDouble(flag, cfg.kaleido_angle)) break; }

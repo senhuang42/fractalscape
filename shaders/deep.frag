@@ -20,6 +20,11 @@ uniform vec2  uScaleD;         // df: half-height scale (hi, lo)
 uniform vec2  uJuliaCX;        // df: Julia constant real part (hi, lo)
 uniform vec2  uJuliaCY;        // df: Julia constant imag part (hi, lo)
 uniform sampler2D uPalette;
+uniform sampler2D uStripePalette; // separate gradient for the stripe (SAC) layer
+uniform sampler2D uInsidePalette; // separate gradient for set-interior coloring
+uniform bool      uHasStripePalette; // false -> reuse uPalette for stripe layer
+uniform bool      uColorInside;      // color set interior by SAC instead of flat
+uniform int       uPosterize;        // 0 = off, otherwise quantize sample pos
 uniform float uColorDensity;
 uniform float uColorOffset;
 uniform float uStripeColor;
@@ -48,6 +53,21 @@ vec2 dfAdd(vec2 a, vec2 b){ vec2 s = dfTwoSum(a.x, b.x); s.y += a.y + b.y; retur
 vec2 dfSub(vec2 a, vec2 b){ return dfAdd(a, vec2(-b.x, -b.y)); }
 vec2 dfMul(vec2 a, vec2 b){ vec2 p = dfTwoProd(a.x, b.x); p.y += a.x * b.y + a.y * b.x; return dfQuickTwoSum(p.x, p.y); }
 vec2 dfMulF(vec2 a, float b){ vec2 p = dfTwoProd(a.x, b); p.y += a.y * b; return dfQuickTwoSum(p.x, p.y); }
+
+// Posterize gradient sample position to N flat bands; pass-through if off.
+// Band index clamped to [0, N-1] before centering so s=1.0 doesn't overshoot.
+float posterizeS(float s) {
+    if (uPosterize <= 1) return s;
+    float n = float(uPosterize);
+    float band = min(floor(s * n), n - 1.0);
+    return (band + 0.5) / n;
+}
+vec3 sampleIter(float s)   { return texture(uPalette,        vec2(posterizeS(s), 0.5)).rgb; }
+vec3 sampleStripe(float s) {
+    if (uHasStripePalette) return texture(uStripePalette, vec2(posterizeS(s), 0.5)).rgb;
+    return texture(uPalette, vec2(posterizeS(s), 0.5)).rgb;
+}
+vec3 sampleInside(float s) { return texture(uInsidePalette, vec2(posterizeS(s), 0.5)).rgb; }
 
 void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / uResolution.y;
@@ -91,7 +111,17 @@ void main() {
         if (m2 > bail2) break;
     }
 
-    if (i >= uMaxIter) { FragColor = vec4(uInsideColor, 1.0); return; }
+    if (i >= uMaxIter) {
+        if (uColorInside && useStripe && stripeN > 0) {
+            float sacIn = stripeSum / float(stripeN);
+            sacIn = (sacIn - 0.5) * uStripeContrast + 0.5;
+            float sIn = fract(clamp(sacIn, 0.0, 1.0) + uColorOffset);
+            FragColor = vec4(sampleInside(sIn), 1.0);
+        } else {
+            FragColor = vec4(uInsideColor, 1.0);
+        }
+        return;
+    }
 
     float log_zn = 0.5 * log(m2);
     float nu     = log(log_zn / log(uBailout)) / log(2.0);
@@ -108,14 +138,16 @@ void main() {
 
     vec3 col;
     if (uColorDensity <= 0.0) {
-        col = texture(uPalette, vec2(stripeS, 0.5)).rgb;
+        col = sampleStripe(stripeS);
     } else {
         float iterS = 1.0 - exp(-mu * uColorDensity);
         if (uStripeColor <= 0.0) {
-            col = texture(uPalette, vec2(iterS, 0.5)).rgb;
+            col = sampleIter(iterS);
         } else {
-            vec3  stripeCol = texture(uPalette, vec2(stripeS, 0.5)).rgb;
-            vec3  iterCol   = texture(uPalette, vec2(iterS,   0.5)).rgb;
+            // Dual-palette ready: iter draws field from uPalette, stripe draws
+            // structure from uStripePalette (or uPalette if not provided).
+            vec3  stripeCol = sampleStripe(stripeS);
+            vec3  iterCol   = sampleIter(iterS);
             float gate = smoothstep(0.20, 0.62, iterS);
             col = mix(iterCol, stripeCol * gate, uStripeColor);
         }

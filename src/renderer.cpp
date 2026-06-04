@@ -232,17 +232,52 @@ bool Renderer::init(int width, int height, int ssaa,
     }
 
     glGenTextures(1, &palette_tex_);
+    glGenTextures(1, &stripe_palette_tex_);
+    glGenTextures(1, &inside_palette_tex_);
+    glGenTextures(1, &nebula_tex_);
     return true;
 }
 
-void Renderer::setPalette(const std::vector<uint8_t>& rgb, int resolution) {
-    glBindTexture(GL_TEXTURE_2D, palette_tex_);
+// Shared upload path; same filter/wrap setup as the original setPalette.
+static void uploadGradient(unsigned int tex, const std::vector<uint8_t>& rgb, int resolution) {
+    glBindTexture(GL_TEXTURE_2D, tex);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, resolution, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);        // seamless cycling
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
+void Renderer::setPalette(const std::vector<uint8_t>& rgb, int resolution) {
+    uploadGradient(palette_tex_, rgb, resolution);
+}
+
+void Renderer::setStripePalette(const std::vector<uint8_t>& rgb, int resolution) {
+    if (rgb.empty() || resolution <= 0) { has_stripe_palette_ = false; return; }
+    uploadGradient(stripe_palette_tex_, rgb, resolution);
+    has_stripe_palette_ = true;
+}
+
+void Renderer::setInsidePalette(const std::vector<uint8_t>& rgb, int resolution) {
+    if (rgb.empty() || resolution <= 0) { has_inside_palette_ = false; return; }
+    uploadGradient(inside_palette_tex_, rgb, resolution);
+    has_inside_palette_ = true;
+}
+
+void Renderer::setNebulaTexture(const std::vector<uint8_t>& rgb, int width, int height) {
+    if (rgb.empty() || width <= 0 || height <= 0) { has_nebula_ = false; return; }
+    glBindTexture(GL_TEXTURE_2D, nebula_tex_);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb.data());
+    // Linear filtering smooths the density when sampled by the hi-res fractal
+    // FBO (which may be width*ssaa across); the wisps are low-frequency so the
+    // output-resolution texture is plenty.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    has_nebula_ = true;
 }
 
 // Split a double into a high/low float pair (df64) for the deep-zoom shader.
@@ -265,8 +300,22 @@ void Renderer::render(const RenderConfig& cfg) {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo_hi_);
     glViewport(0, 0, hw, hh);
     glBindVertexArray(vao_);
+    // Texture units: 0 = main palette (iter layer), 1 = stripe palette, 2 =
+    // inside palette. The auxiliary samplers fall back to the main palette
+    // texture when no separate gradient was uploaded -- so an undefined-texture
+    // read never happens, and the shader's uHasStripePalette / uColorInside
+    // flags route which sampler actually contributes.
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, palette_tex_);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, has_stripe_palette_ ? stripe_palette_tex_ : palette_tex_);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, has_inside_palette_ ? inside_palette_tex_ : palette_tex_);
+    // Unit 3 = Buddhabrot density (hybrid accent layer). Fallback to the main
+    // palette texture is harmless since the shader gates on uNebulaWeight.
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, has_nebula_ ? nebula_tex_ : palette_tex_);
+    glActiveTexture(GL_TEXTURE0);
 
     if (cfg.deep) {
         // Deep zoom: emulated double-float iteration (quadratic SAC path only).
@@ -281,6 +330,11 @@ void Renderer::render(const RenderConfig& cfg) {
         setUniform1i(deep_prog_, "uMaxIter", cfg.max_iter);
         setUniform1f(deep_prog_, "uBailout", (float)cfg.bailout);
         setUniform1i(deep_prog_, "uPalette", 0);
+        setUniform1i(deep_prog_, "uStripePalette", 1);
+        setUniform1i(deep_prog_, "uInsidePalette", 2);
+        setUniform1i(deep_prog_, "uHasStripePalette", has_stripe_palette_ ? 1 : 0);
+        setUniform1i(deep_prog_, "uColorInside",     cfg.color_inside ? 1 : 0);
+        setUniform1i(deep_prog_, "uPosterize",       cfg.posterize);
         setUniform1f(deep_prog_, "uColorDensity", (float)cfg.color_density);
         setUniform1f(deep_prog_, "uColorOffset", (float)cfg.color_offset);
         setUniform1f(deep_prog_, "uStripeColor", (float)cfg.stripe_color);
@@ -322,6 +376,16 @@ void Renderer::render(const RenderConfig& cfg) {
     setUniform1f(fractal_prog_, "uBailout", (float)cfg.bailout);
     setUniform1f(fractal_prog_, "uExponent", (float)cfg.exponent);
     setUniform1i(fractal_prog_, "uPalette", 0);
+    setUniform1i(fractal_prog_, "uStripePalette", 1);
+    setUniform1i(fractal_prog_, "uInsidePalette", 2);
+    setUniform1i(fractal_prog_, "uNebulaTex",     3);
+    setUniform1i(fractal_prog_, "uHasStripePalette", has_stripe_palette_ ? 1 : 0);
+    setUniform1i(fractal_prog_, "uColorInside",     cfg.color_inside ? 1 : 0);
+    setUniform1i(fractal_prog_, "uPosterize",       cfg.posterize);
+    setUniform1f(fractal_prog_, "uNebulaWeight",   has_nebula_ ? (float)cfg.nebula_accent : 0.0f);
+    setUniform3f(fractal_prog_, "uNebulaColor",    cfg.nebula_color.r, cfg.nebula_color.g, cfg.nebula_color.b);
+    setUniform1f(fractal_prog_, "uNebulaHueShift", has_nebula_ ? (float)cfg.nebula_hue_shift : 0.0f);
+    setUniform1i(fractal_prog_, "uNebulaRgb",      cfg.nebula_rgb ? 1 : 0);
     setUniform1f(fractal_prog_, "uColorDensity", (float)cfg.color_density);
     setUniform1f(fractal_prog_, "uColorOffset", (float)cfg.color_offset);
     setUniform1f(fractal_prog_, "uAngleColor", (float)cfg.angle_color);
@@ -378,7 +442,18 @@ resolve:
         glUseProgram(bloom_prog_);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, tex_lo_);
+        // Modality 3: bind the nebula texture to unit 1 so the extract pass
+        // can mix orbit density into the bright-pass mask. Falls back to the
+        // main palette texture (harmless: gated on uNebulaBloom > 0).
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, has_nebula_ ? nebula_tex_ : palette_tex_);
+        glActiveTexture(GL_TEXTURE0);
         setUniform1i(bloom_prog_, "uTex", 0);
+        setUniform1i(bloom_prog_, "uNebulaTex", 1);
+        setUniform3f(bloom_prog_, "uNebulaColor", cfg.nebula_color.r, cfg.nebula_color.g, cfg.nebula_color.b);
+        setUniform1i(bloom_prog_, "uNebulaRgb", cfg.nebula_rgb ? 1 : 0);
+        setUniform1f(bloom_prog_, "uNebulaBloom",
+                     has_nebula_ ? (float)cfg.nebula_bloom : 0.0f);
         setUniform2f(bloom_prog_, "uTexSize", fw, fh);
         setUniform2f(bloom_prog_, "uDir", spread, 0.0f);
         setUniform1i(bloom_prog_, "uExtract", 1);

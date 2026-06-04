@@ -41,8 +41,54 @@ int runRender(const fractal::RenderConfig& cfg) {
         std::cerr << "error: " << err << "\n";
         return 1;
     }
-    auto grad = fractal::buildGradient(cfg.palette, kGradientResolution, cfg.cyclic);
+    // Gradient stays SMOOTH here; posterization is applied at sample time in
+    // the shader (uPosterize). Applying it twice would double-quantize and the
+    // shader path also keeps banding consistent under color_offset animation.
+    auto grad = fractal::buildGradient(cfg.palette, kGradientResolution, cfg.cyclic,
+                                       cfg.interp, 0);
     r.setPalette(grad, kGradientResolution);
+    // Optional secondary palettes (empty -> renderer falls back to main).
+    if (!cfg.stripe_palette.empty()) {
+        auto sg = fractal::buildGradient(cfg.stripe_palette, kGradientResolution, cfg.cyclic,
+                                         cfg.interp, 0);
+        r.setStripePalette(sg, kGradientResolution);
+    } else {
+        r.setStripePalette({}, 0);
+    }
+    if (!cfg.inside_palette.empty()) {
+        auto ig = fractal::buildGradient(cfg.inside_palette, kGradientResolution, cfg.cyclic,
+                                         cfg.interp, 0);
+        r.setInsidePalette(ig, kGradientResolution);
+    } else {
+        r.setInsidePalette({}, 0);
+    }
+    // Hybrid nebula accent / hue-shift / bloom-mask: pre-render the Buddhabrot
+    // at the same view as the fractal so it overlays in alignment. The shader
+    // sample interprets the texture differently depending on uNebulaRgb:
+    //   mono (default) -> single-channel density tinted by uNebulaColor
+    //   rgb            -> 3-channel R/G/B from three iter thresholds (lifetime)
+    // Skip when --deep (CPU buddhabrot is float-precision, no df64 alignment).
+    bool need_nebula = !cfg.deep &&
+                       (cfg.nebula_accent > 0.0 || cfg.nebula_hue_shift != 0.0 ||
+                        cfg.nebula_bloom > 0.0);
+    if (need_nebula) {
+        fractal::RenderConfig nb = cfg;
+        nb.samples = cfg.nebula_accent_samples;
+        nb.nebula = cfg.nebula_rgb;     // 3-channel only when explicitly asked
+        if (!cfg.nebula_rgb) {
+            // Mono path: R = density, untouched by palette tint.
+            if (!fractal::parsePalette("mono", nb.palette)) nb.palette = {{0,0,0},{1,1,1}};
+            nb.cyclic = false;
+        }
+        std::cerr << "nebula pre-pass: " << cfg.nebula_accent_samples
+                  << "M samples @ " << cfg.width << "x" << cfg.height
+                  << (cfg.nebula_rgb ? " (RGB lifetime mode)" : " (mono density)")
+                  << "...\n";
+        auto density = fractal::renderBuddhabrot(nb);
+        r.setNebulaTexture(density, cfg.width, cfg.height);
+    } else {
+        r.setNebulaTexture({}, 0, 0);
+    }
     r.render(cfg);
     auto pixels = r.readPixels();
 
@@ -208,8 +254,20 @@ int runVideo(const fractal::VideoConfig& cfg) {
         std::cerr << "error: " << err << "\n";
         return 1;
     }
-    auto grad = fractal::buildGradient(v.palette, kGradientResolution, v.cyclic);
+    auto grad = fractal::buildGradient(v.palette, kGradientResolution, v.cyclic, v.interp, 0);
     r.setPalette(grad, kGradientResolution);
+    if (!v.stripe_palette.empty()) {
+        auto sg = fractal::buildGradient(v.stripe_palette, kGradientResolution, v.cyclic, v.interp, 0);
+        r.setStripePalette(sg, kGradientResolution);
+    } else {
+        r.setStripePalette({}, 0);
+    }
+    if (!v.inside_palette.empty()) {
+        auto ig = fractal::buildGradient(v.inside_palette, kGradientResolution, v.cyclic, v.interp, 0);
+        r.setInsidePalette(ig, kGradientResolution);
+    } else {
+        r.setInsidePalette({}, 0);
+    }
 
     const int N = v.total_frames();
     if (N < 1) { std::cerr << "error: nothing to render (duration/fps too small)\n"; return 1; }

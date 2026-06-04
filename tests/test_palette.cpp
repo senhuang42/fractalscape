@@ -68,4 +68,44 @@ void test_palette() {
     auto single = buildGradient({{1,0,0}}, 16, false);
     CHECK(single.size() == 16u * 3);
     CHECK(single[0] == 255 && single[1] == 0);
+
+    // ---- expanded coloring vocabulary ------------------------------------
+    // New palettes are registered.
+    CHECK(std::find(names.begin(), names.end(), "burn")   != names.end());
+    CHECK(std::find(names.begin(), names.end(), "jewel")  != names.end());
+    CHECK(std::find(names.begin(), names.end(), "arctic") != names.end());
+
+    // Oklab interpolation keeps cross-hue midpoints SATURATED. Red->blue at
+    // the midpoint in RGB lerp gives ~(127,0,127) which is dim purple; in
+    // Oklab it stays at perceptual chroma -- definitely not the "grey/brown
+    // mud" path. Use the green channel as the discriminator: pure red+pure
+    // blue have g=0, so a non-zero g midpoint means the interpolation
+    // detoured through some other hue (which Oklab does not).
+    std::vector<Color> rb = {{1,0,0}, {0,0,1}};
+    auto rb_rgb   = buildGradient(rb, 256, /*cyclic=*/false, InterpMode::Rgb);
+    auto rb_oklab = buildGradient(rb, 256, /*cyclic=*/false, InterpMode::Oklab);
+    const int mid = 128 * 3;
+    // RGB lerp midpoint should be dim ((127,0,127)).
+    CHECK(rb_rgb[mid + 0] > 100 && rb_rgb[mid + 0] < 160);
+    CHECK(rb_rgb[mid + 2] > 100 && rb_rgb[mid + 2] < 160);
+    CHECK(rb_rgb[mid + 1] < 5);   // green stays near zero in RGB lerp
+    // Oklab midpoint should be visibly brighter overall (luminance is higher
+    // because the path doesn't dip toward the achromatic axis), and total
+    // RGB sum exceeds the RGB-lerp midpoint sum.
+    int sum_rgb   = rb_rgb[mid] + rb_rgb[mid+1] + rb_rgb[mid+2];
+    int sum_oklab = rb_oklab[mid] + rb_oklab[mid+1] + rb_oklab[mid+2];
+    CHECK(sum_oklab > sum_rgb + 20); // measurably brighter, not just noise
+
+    // Posterize quantizes to N bands -> output has at most N distinct RGB
+    // triples (modulo rounding). With N=4 over a 256-px gradient we should
+    // see exactly 4 unique colors.
+    auto post4 = buildGradient(two, 256, /*cyclic=*/false, InterpMode::Rgb, /*posterize=*/4);
+    CHECK(post4.size() == 256u * 3);
+    std::vector<int> uniques;
+    for (int i = 0; i < 256; i++) {
+        int v = post4[i*3] * 65536 + post4[i*3+1] * 256 + post4[i*3+2];
+        if (std::find(uniques.begin(), uniques.end(), v) == uniques.end())
+            uniques.push_back(v);
+    }
+    CHECK(uniques.size() == 4); // exactly 4 distinct bands
 }

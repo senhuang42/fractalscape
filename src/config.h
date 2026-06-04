@@ -29,6 +29,14 @@ enum class Formula {
     Newton = 4,      // z -> z - (z^3 - 1)/(3 z^2), colored by which root it reaches
 };
 
+// Color space in which palette gradient stops are interpolated.
+//   Rgb   - direct lerp in sRGB space. The original behavior; predictable but
+//           the lerp passes through grey/brown for opposed hues (e.g. red->blue
+//           dips through #80407f mud).
+//   Oklab - perceptually-uniform space. Same red->blue stays saturated through
+//           magenta. Default for new style presets; opt-in for legacy palettes.
+enum class InterpMode { Rgb, Oklab };
+
 // How an animation evolves over its duration. All modes are designed so that
 // frame 0 and the final frame line up, giving a seamless loop.
 enum class AnimMode {
@@ -125,6 +133,50 @@ struct RenderConfig {
     double trap_x        = 0.0;
     double trap_y        = 0.0;
     Color  inside_color  = {0,0,0};    // color for points in the set
+
+    // --- Expanded coloring vocabulary (all default to old behavior) ---
+    // Gradient interpolation space (see InterpMode). Old default = Rgb, so every
+    // pre-existing palette renders byte-identical unless you opt into Oklab.
+    InterpMode interp = InterpMode::Rgb;
+    // Separate palette for the stripe (SAC) layer. Empty -> use main palette for
+    // both layers (the original behavior). When set, the iter layer samples the
+    // main palette and the stripe layer samples this one, so field and structure
+    // get genuinely separate hues (the trick the new style presets exploit).
+    std::vector<Color> stripe_palette;
+    // Posterize the palette sample position to N flat bands. 0 = off (smooth
+    // gradient, old behavior); 2..32 quantizes to that many color bands for a
+    // screen-print / stained-glass look.
+    int    posterize     = 0;
+    // Color the set INTERIOR (orbits that never escape) by their SAC value
+    // instead of the flat inside_color. Off by default; when on, samples the
+    // main palette (or inside_palette below) at the orbit's stripe value.
+    bool   color_inside  = false;
+    // Optional separate palette for the interior, when color_inside is true.
+    // Empty -> use the main palette.
+    std::vector<Color> inside_palette;
+
+    // --- Hybrid: Buddhabrot density as an accent layer over escape-time -----
+    // When > 0, pre-render the Buddhabrot at the same view as the fractal and
+    // additively overlay it as colored "ghost wisps" of orbit trajectories.
+    // Off by default; pairs with --nebula-color (the wisp tint) and
+    // --nebula-samples (CPU sample budget for the pre-pass). Shallow only --
+    // the CPU buddhabrot is float-precision, so alignment breaks under --deep.
+    double nebula_accent       = 0.0;   // overlay strength (0 = off)
+    Color  nebula_color        = {1, 1, 1}; // wisp tint (ignored in RGB mode)
+    double nebula_accent_samples = 8.0;  // millions of orbits for the pre-pass
+    // Modality 2: density modulates the stripe palette sample position, so
+    // hue shifts trace where orbits clustered. Independent of accent strength;
+    // a small value (~0.15) is plenty noticeable.
+    double nebula_hue_shift    = 0.0;
+    // Modality 3: density drives the bloom bright-pass mask. Pixels with high
+    // orbit density bloom regardless of their own luminance, so wisps glow
+    // even in dim regions. Strength is added to the standard luminance mask.
+    double nebula_bloom        = 0.0;
+    // Modality 4: use three-channel Nebulabrot (R/G/B from low/mid/high
+    // iteration thresholds) as the accent source. Channels are added directly
+    // to the final color so wisps are multi-hued by orbit lifetime. When on,
+    // nebula_color is ignored. Threshold knobs reuse nebula_r/_g/_b.
+    bool   nebula_rgb          = false;
     double saturation    = 1.3;        // final grade
     double gamma         = 1.05;       // final grade (1 = none)
     double black_point   = 0.08;       // crush near-blacks so empties are black
