@@ -32,6 +32,7 @@ uniform float     uLightAngle;       // light direction (degrees, deep path reus
 uniform float     uLightHeight;
 uniform float     uHeightScale;
 uniform float     uShininess;
+uniform int       uReliefMode;       // 0 = SAC, 1 = TIA
 uniform float uColorDensity;
 uniform float uColorOffset;
 uniform float uStripeColor;
@@ -106,12 +107,26 @@ void main() {
         vec2 x2 = dfMul(x, x);
         vec2 y2 = dfMul(y, y);
         vec2 xy = dfMul(x, y);
+        // Capture |z|^2 BEFORE the update (used by TIA below). float view is
+        // ample: TIA only needs the magnitude bucket, not full df64.
+        float pre_mz2 = x.x * x.x + y.x * y.x;
         x = dfAdd(dfSub(x2, y2), cx);   // x' = x^2 - y^2 + cx
         y = dfAdd(dfAdd(xy, xy), cy);   // y' = 2xy + cy
         float fzx = x.x, fzy = y.x;     // float view of z for coloring
         if (useStripe && i >= kStripeSkip) {
-            lastTerm   = 0.5 + 0.5 * sin(uStripeFreq * atan(fzy, fzx));
-            stripeSum += lastTerm;
+            float term;
+            if (uReliefMode == 1) {
+                // TIA: average position of |z'+c| in [||z'^2|-|c||, |z'^2|+|c|].
+                float mc   = sqrt(cx.x * cx.x + cy.x * cy.x);
+                float mnew = sqrt(fzx * fzx + fzy * fzy);
+                float lo   = abs(pre_mz2 - mc);
+                float hi   = pre_mz2 + mc;
+                term = clamp((mnew - lo) / max(hi - lo, 1e-9), 0.0, 1.0);
+            } else {
+                term = 0.5 + 0.5 * sin(uStripeFreq * atan(fzy, fzx));
+            }
+            lastTerm   = term;
+            stripeSum += term;
             stripeN++;
         }
         m2 = fzx * fzx + fzy * fzy;

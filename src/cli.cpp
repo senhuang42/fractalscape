@@ -481,6 +481,79 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
         c.bloom = 0.3; c.bloom_threshold = 0.65;
         c.inside_color = {0.10f, 0.08f, 0.40f}; // indigo eye
     }
+    // --- Orbit-statistic presets exercising TIA / Pickover stalks / shaped
+    // traps. Each technique reveals a structural axis the SAC/iter pipeline
+    // cannot reach.
+
+    // flame-mandel: Triangle Inequality Average gives the iconic "flame fur"
+    // extending outward from the set boundary. The whole-set Mandelbrot view
+    // shows TIA at its most recognisable.
+    else if (name == "flame-mandel") {
+        mandel(-0.5, 0.0, 1.4, 1500, "magma");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.relief_mode = ReliefMode::TIA;
+        c.stripe_contrast = 3.0;
+        c.color_density = 0.0;       // stripe-only -> pure TIA story
+        c.bloom = 0.35;
+    }
+    // flame-spiral: TIA on a zoomed Julia. The flame plumes extend along the
+    // dendrite filaments instead of from a closed boundary -- gives a wispy,
+    // organic look unlike anything SAC produces.
+    else if (name == "flame-spiral") {
+        julia(-0.7269, 0.1889, 1.10, 2500, "ember");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.relief_mode = ReliefMode::TIA;
+        c.stripe_contrast = 3.2;
+        c.color_density = 0.0;
+        c.bloom = 0.4;
+    }
+    // stardust: Pickover stalks colors pixels by how closely their orbit
+    // grazed the coordinate axes -- producing radiating cross/stalk patterns
+    // through the exterior, like fireworks from the set boundary.
+    else if (name == "stardust") {
+        mandel(-0.5, 0.0, 1.4, 1200, "neon");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.stalk_color = 0.7; c.stalk_freq = 8.0;
+        c.color_density = 0.0; c.stripe_color = 0.0;
+        c.bloom = 0.4;
+    }
+    // stargate: shaped orbit trap = circle. Distance to a ring at radius
+    // trap_radius creates concentric "lens" bands echoing the trap shape,
+    // overlaid on the Mandelbrot. Very different from any iter/SAC look.
+    else if (name == "stargate") {
+        mandel(-0.5, 0.0, 1.4, 1000, "ember");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.trap_color = 1.5; c.trap_shape = TrapShape::Circle;
+        c.trap_radius = 0.8; c.trap_x = 0.0; c.trap_y = 0.0;
+        c.color_density = 0.0; c.stripe_color = 0.0;
+        c.bloom = 0.35;
+    }
+    // starcross: shaped orbit trap = cross. Distance to two perpendicular
+    // axes through (trap_x, trap_y) gives 4-armed cross overlay. Pairs
+    // beautifully with a Julia: the cross intersects the set's own filaments
+    // and adds an architectural skeleton.
+    else if (name == "starcross") {
+        julia(-0.512511, 0.521295, 1.30, 2000, "vapor");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.trap_color = 1.2; c.trap_shape = TrapShape::Cross;
+        c.trap_x = 0.0; c.trap_y = 0.0;
+        c.color_density = 0.0; c.stripe_color = 0.0;
+        c.bloom = 0.4;
+    }
+    // tia-relief: TIA combined with --slopes for a 3D-embossed flame look on
+    // a restrained palette. The TIA orbit averages get directional lighting
+    // from log(mu), so the flame plumes have form and shadow.
+    else if (name == "tia-relief") {
+        mandel(-0.74364388703, 0.13182590421, 0.006, 3000, "sepia");
+        c.interp = InterpMode::Oklab;
+        c.relief_mode = ReliefMode::TIA;
+        c.stripe_contrast = 2.6;
+        c.color_density = 0.0;
+        c.slopes = 0.5; c.slopes_spec = 0.3;
+        c.light_angle = 130.0; c.light_height = 1.2; c.height_scale = 2.0;
+        c.shininess = 14.0;
+        c.bloom = 0.3;
+    }
     // mathstown-honey: warm gold field with lime-green spiral core highlights.
     // Reference image 4.
     else if (name == "mathstown-honey") {
@@ -539,6 +612,8 @@ const std::vector<std::string>& presetNames() {
         "dendrite-glow", "plasma-storm",
         "mathstown-classic", "mathstown-seahorse", "mathstown-deep", "mathstown-cosmos",
         "mathstown-teal", "mathstown-sepia", "mathstown-chrome", "mathstown-honey",
+        "flame-mandel", "flame-spiral", "stardust", "stargate", "starcross",
+        "tia-relief",
         "burning-ship", "phoenix", "newton",
     };
     return kNames;
@@ -666,6 +741,22 @@ COMMON OPTIONS
                                   direction; --slopes-spec adds highlights.
       --slopes-spec <float>       Specular highlight strength for --slopes
                                   (default 0). Tightness reuses --shininess.
+      --relief <sac|tia>          Relief-layer mode (default sac). tia =
+                                  Triangle Inequality Average: average of
+                                  where |z'+c| falls in the [||z'|-|c||,
+                                  |z'|+|c|] window each iteration. Gives
+                                  flame-like patterns instead of SAC fur.
+      --trap-shape <point|cross|circle>
+                                  Geometric orbit-trap shape (default point).
+                                  cross = distance to two axes through the
+                                  trap point. circle = |dist - trap_radius|.
+      --trap-radius <float>       Radius for --trap-shape circle (default 0.5).
+      --stalk-color <float>       Pickover stalks: min orbit distance to x/y
+                                  axes, mapped to a stripe contribution. 0=off,
+                                  ~0.2-0.6 typical. Reveals cross/stalk patterns
+                                  not visible to SAC or trap.
+      --stalk-freq <float>        Stalk falloff sharpness (default 6.0).
+                                  Higher = thinner/sharper stalk highlights.
 
   ALBUM-ART / DESIGN LAYER (all off at 0; see the cover-* presets)
       --kaleido <float>           N mirrored wedges -> mandala (default: 0/off)
@@ -911,6 +1002,22 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "--log-iter")         { cfg.log_iter = true; }
         else if (flag == "--slopes")           { if (!cur.nextDouble(flag, cfg.slopes)) break; }
         else if (flag == "--slopes-spec")      { if (!cur.nextDouble(flag, cfg.slopes_spec)) break; }
+        else if (flag == "--relief") {
+            std::string v; if (!cur.nextStr(flag, v)) break;
+            if      (v == "sac") cfg.relief_mode = ReliefMode::SAC;
+            else if (v == "tia") cfg.relief_mode = ReliefMode::TIA;
+            else { fail("--relief must be sac or tia; got '" + v + "'"); break; }
+        }
+        else if (flag == "--trap-shape") {
+            std::string v; if (!cur.nextStr(flag, v)) break;
+            if      (v == "point")  cfg.trap_shape = TrapShape::Point;
+            else if (v == "cross")  cfg.trap_shape = TrapShape::Cross;
+            else if (v == "circle") cfg.trap_shape = TrapShape::Circle;
+            else { fail("--trap-shape must be point, cross, or circle; got '" + v + "'"); break; }
+        }
+        else if (flag == "--trap-radius")    { if (!cur.nextDouble(flag, cfg.trap_radius)) break; }
+        else if (flag == "--stalk-color")    { if (!cur.nextDouble(flag, cfg.stalk_color)) break; }
+        else if (flag == "--stalk-freq")     { if (!cur.nextDouble(flag, cfg.stalk_freq)) break; }
         // ---- album-art / design layer ----
         else if (flag == "--kaleido")    { if (!cur.nextDouble(flag, cfg.kaleido)) break; }
         else if (flag == "--kaleido-angle"){ if (!cur.nextDouble(flag, cfg.kaleido_angle)) break; }

@@ -342,6 +342,7 @@ void Renderer::render(const RenderConfig& cfg) {
         setUniform1f(deep_prog_, "uLightHeight",     (float)cfg.light_height);
         setUniform1f(deep_prog_, "uHeightScale",     (float)cfg.height_scale);
         setUniform1f(deep_prog_, "uShininess",       (float)cfg.shininess);
+        setUniform1i(deep_prog_, "uReliefMode",      (int)cfg.relief_mode);
         setUniform1f(deep_prog_, "uColorDensity", (float)cfg.color_density);
         setUniform1f(deep_prog_, "uColorOffset", (float)cfg.color_offset);
         setUniform1f(deep_prog_, "uStripeColor", (float)cfg.stripe_color);
@@ -396,6 +397,11 @@ void Renderer::render(const RenderConfig& cfg) {
     setUniform1i(fractal_prog_, "uLogIter",        cfg.log_iter ? 1 : 0);
     setUniform1f(fractal_prog_, "uSlopes",         (float)cfg.slopes);
     setUniform1f(fractal_prog_, "uSlopesSpec",     (float)cfg.slopes_spec);
+    setUniform1i(fractal_prog_, "uReliefMode",     (int)cfg.relief_mode);
+    setUniform1i(fractal_prog_, "uTrapShape",      (int)cfg.trap_shape);
+    setUniform1f(fractal_prog_, "uTrapRadius",     (float)cfg.trap_radius);
+    setUniform1f(fractal_prog_, "uStalkColor",     (float)cfg.stalk_color);
+    setUniform1f(fractal_prog_, "uStalkFreq",      (float)cfg.stalk_freq);
     setUniform1f(fractal_prog_, "uColorDensity", (float)cfg.color_density);
     setUniform1f(fractal_prog_, "uColorOffset", (float)cfg.color_offset);
     setUniform1f(fractal_prog_, "uAngleColor", (float)cfg.angle_color);

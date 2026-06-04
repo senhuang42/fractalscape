@@ -34,6 +34,11 @@ uniform int       uPosterize;        // 0 = off, otherwise quantize sample pos
 uniform bool      uLogIter;          // Maths Town-style cyclic log-iter coloring
 uniform float     uSlopes;           // directional shading from log(mu) gradient (0 = off)
 uniform float     uSlopesSpec;       // specular intensity for slopes (0 = none)
+uniform int       uReliefMode;       // 0 = SAC stripe, 1 = TIA (Triangle Inequality Avg)
+uniform int       uTrapShape;        // 0 = point, 1 = cross, 2 = circle
+uniform float     uTrapRadius;       // for trap shape = circle
+uniform float     uStalkColor;       // Pickover stalks weight (0 = off)
+uniform float     uStalkFreq;        // stalk falloff sharpness
 uniform float     uNebulaWeight;     // strength of the nebula accent (0 = off)
 uniform vec3      uNebulaColor;      // wisp tint (multiplied by density); ignored in RGB mode
 uniform float     uNebulaHueShift;   // density modulates stripe sample position
@@ -160,9 +165,10 @@ void main() {
     int   i;
     float m2        = dot(z, z);
     float trap      = 1e20;  // closest the orbit comes to uTrapPoint
-    float stripeSum = 0.0;   // running sum of sin-stripe terms
+    float stripeSum = 0.0;   // running sum of stripe / TIA terms (mode-dependent)
     float lastTerm  = 0.0;   // most recent stripe term (for de-banding)
     int   stripeN   = 0;     // number of stripe terms summed
+    float stalkMin  = 1e20;  // Pickover stalks: min |z.x| or |z.y| seen
     vec2  zprev     = vec2(0.0); // previous z, for Phoenix
     for (i = 0; i < uMaxIter; i++) {
         // Formula transform applied to z before squaring: Burning Ship folds
@@ -182,10 +188,36 @@ void main() {
             if (useDE) dz = uExponent * cmul(cpow(zt, uExponent - 1.0), dz) + one;
             z  = cpow(zt, uExponent) + c;
         }
-        if (useTrap) trap = min(trap, distance(z, uTrapPoint));
+        if (useTrap) {
+            vec2 dv = z - uTrapPoint;
+            float d;
+            if      (uTrapShape == 1) d = min(abs(dv.x), abs(dv.y));        // cross
+            else if (uTrapShape == 2) d = abs(length(dv) - uTrapRadius);    // ring
+            else                      d = length(dv);                       // point
+            trap = min(trap, d);
+        }
+        // Pickover stalks: closest the orbit ever came to either coordinate
+        // axis. Independent of trap; combines with stripe sample below.
+        if (uStalkColor > 0.0) stalkMin = min(stalkMin, min(abs(z.x), abs(z.y)));
         if (useStripe && i >= kStripeSkip) {
-            lastTerm   = 0.5 + 0.5 * sin(uStripeFreq * atan(z.y, z.x));
-            stripeSum += lastTerm;
+            // ReliefMode dispatch: SAC (sine of orbit angle) vs TIA (where
+            // |z'+c| lies in the triangle-inequality window). TIA needs z
+            // BEFORE this iteration's update (= zt, the formula-transformed z
+            // already in scope). |zt^2| = dot(zt,zt) saves a sqrt.
+            float term;
+            if (uReliefMode == 1) {
+                float mz2  = dot(zt, zt);
+                float mc   = length(c);
+                float mnew = sqrt(m2);          // m2 will be updated below; recompute is cheap
+                mnew = length(z);
+                float lo   = abs(mz2 - mc);
+                float hi   = mz2 + mc;
+                term = clamp((mnew - lo) / max(hi - lo, 1e-9), 0.0, 1.0);
+            } else {
+                term = 0.5 + 0.5 * sin(uStripeFreq * atan(z.y, z.x));
+            }
+            lastTerm   = term;
+            stripeSum += term;
             stripeN++;
         }
         m2 = dot(z, z);
@@ -245,7 +277,12 @@ void main() {
     // stripe_color==0 -> iteration only; both > 0 -> gated overlay.
     float stripeS = clamp(sac, 0.0, 1.0);
     float angle   = atan(z.y, z.x) / (2.0 * PI) + 0.5; // [0,1)
-    stripeS = fract(stripeS + uAngleColor * angle + uTrapColor * trap + uColorOffset);
+    // Pickover stalks: small stalkMin (orbit grazed an axis) -> stalkS near 1.
+    // Adds another orbit-statistic contribution to stripeS, independent of SAC,
+    // angle, and trap. Reveals cross/stalk patterns hidden to other techniques.
+    float stalkS = (uStalkColor > 0.0) ? exp(-uStalkFreq * stalkMin) : 0.0;
+    stripeS = fract(stripeS + uAngleColor * angle + uTrapColor * trap +
+                    uStalkColor * stalkS + uColorOffset);
 
     // Nebula hybrid: sample density ONCE up front; reused by both the hue-
     // shift (modality 2, modifies stripeS before palette lookup) and the

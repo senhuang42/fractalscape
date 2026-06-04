@@ -29,6 +29,19 @@ enum class Formula {
     Newton = 4,      // z -> z - (z^3 - 1)/(3 z^2), colored by which root it reaches
 };
 
+// Which per-iteration statistic drives the relief layer (the layer combined
+// with the iter ramp via uStripeColor). SAC averages a sine of the orbit
+// angle; TIA averages where |z'+c| lies between the triangle-inequality bounds
+// ||z'|-|c|| and |z'|+|c|. SAC gives the classical fur/relief texture; TIA
+// gives flame-like patterns extending outward from the boundary.
+enum class ReliefMode { SAC = 0, TIA = 1 };
+
+// Shape of the orbit trap (orbit's min distance feeds --trap-color). Point
+// gives the classical bullseye-around-a-point look. Cross uses distance to
+// the two axes through the trap point. Circle uses |dist - radius|, giving
+// concentric ring patterns wherever orbits graze the ring.
+enum class TrapShape { Point = 0, Cross = 1, Circle = 2 };
+
 // Color space in which palette gradient stops are interpolated.
 //   Rgb   - direct lerp in sRGB space. The original behavior; predictable but
 //           the lerp passes through grey/brown for opposed hues (e.g. red->blue
@@ -161,6 +174,18 @@ struct RenderConfig {
     // already uses) for direction.
     double slopes        = 0.0;
     double slopes_spec   = 0.0;  // specular highlight intensity (0 = none)
+    // Relief-layer mode (SAC = default = byte-compat with all existing renders;
+    // TIA = Triangle Inequality Average for flame-like extending texture).
+    ReliefMode relief_mode = ReliefMode::SAC;
+    // Orbit-trap shape (point = byte-compat). Cross adds line traps to the
+    // two axes through (trap_x, trap_y); Circle uses |dist - trap_radius|.
+    TrapShape  trap_shape  = TrapShape::Point;
+    double     trap_radius = 0.5;  // only used for Circle shape
+    // Pickover stalks: the orbit's minimum distance to x or y axis, mapped
+    // through exp(-stalk_freq * min_dist). High value -> orbit grazed an
+    // axis. Mixed into the stripe-palette sample at strength stalk_color.
+    double     stalk_color = 0.0;
+    double     stalk_freq  = 6.0;
     // Separate palette for the stripe (SAC) layer. Empty -> use main palette for
     // both layers (the original behavior). When set, the iter layer samples the
     // main palette and the stripe layer samples this one, so field and structure
