@@ -335,6 +335,7 @@ void Renderer::render(const RenderConfig& cfg) {
         setUniform1i(deep_prog_, "uHasStripePalette", has_stripe_palette_ ? 1 : 0);
         setUniform1i(deep_prog_, "uColorInside",     cfg.color_inside ? 1 : 0);
         setUniform1i(deep_prog_, "uPosterize",       cfg.posterize);
+        setUniform1i(deep_prog_, "uLogIter",         cfg.log_iter ? 1 : 0);
         setUniform1f(deep_prog_, "uColorDensity", (float)cfg.color_density);
         setUniform1f(deep_prog_, "uColorOffset", (float)cfg.color_offset);
         setUniform1f(deep_prog_, "uStripeColor", (float)cfg.stripe_color);
@@ -386,6 +387,7 @@ void Renderer::render(const RenderConfig& cfg) {
     setUniform3f(fractal_prog_, "uNebulaColor",    cfg.nebula_color.r, cfg.nebula_color.g, cfg.nebula_color.b);
     setUniform1f(fractal_prog_, "uNebulaHueShift", has_nebula_ ? (float)cfg.nebula_hue_shift : 0.0f);
     setUniform1i(fractal_prog_, "uNebulaRgb",      cfg.nebula_rgb ? 1 : 0);
+    setUniform1i(fractal_prog_, "uLogIter",        cfg.log_iter ? 1 : 0);
     setUniform1f(fractal_prog_, "uColorDensity", (float)cfg.color_density);
     setUniform1f(fractal_prog_, "uColorOffset", (float)cfg.color_offset);
     setUniform1f(fractal_prog_, "uAngleColor", (float)cfg.angle_color);

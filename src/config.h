@@ -138,6 +138,20 @@ struct RenderConfig {
     // Gradient interpolation space (see InterpMode). Old default = Rgb, so every
     // pre-existing palette renders byte-identical unless you opt into Oklab.
     InterpMode interp = InterpMode::Rgb;
+    // Maths Town-style log iteration coloring. The default coloring is
+    //   iterS = 1 - exp(-mu * color_density)   (compresses high mu to ~1)
+    // which means deep zooms saturate all features to the bright end of the
+    // palette. Log mode replaces that with
+    //   iterS = fract(log(mu) * color_density + color_offset)   (cyclic)
+    // so each "decade" of escape time gets a fresh palette band; features at
+    // the same RELATIVE depth always land on the same color, and the camera
+    // flies through colored zones instead of rainbow-cycling per frame. The
+    // iter layer's gate is disabled in this mode (every exterior pixel reads
+    // a band color; the set interior still goes to inside_color). Pairs well
+    // with a CYCLIC palette + a small --angle-color for boundary hue shifts.
+    // color_density takes very different values here -- ~0.3-2.0 typical
+    // (band-density per natural-log unit), not the 0.035 of the exp default.
+    bool   log_iter      = false;
     // Separate palette for the stripe (SAC) layer. Empty -> use main palette for
     // both layers (the original behavior). When set, the iter layer samples the
     // main palette and the stripe layer samples this one, so field and structure

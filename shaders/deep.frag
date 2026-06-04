@@ -25,6 +25,7 @@ uniform sampler2D uInsidePalette; // separate gradient for set-interior coloring
 uniform bool      uHasStripePalette; // false -> reuse uPalette for stripe layer
 uniform bool      uColorInside;      // color set interior by SAC instead of flat
 uniform int       uPosterize;        // 0 = off, otherwise quantize sample pos
+uniform bool      uLogIter;          // Maths Town-style cyclic log-iter coloring
 uniform float uColorDensity;
 uniform float uColorOffset;
 uniform float uStripeColor;
@@ -140,15 +141,22 @@ void main() {
     if (uColorDensity <= 0.0) {
         col = sampleStripe(stripeS);
     } else {
-        float iterS = 1.0 - exp(-mu * uColorDensity);
+        // Iteration coloring: exp default vs log (Maths Town) cyclic mode.
+        // See fractal.frag for the design notes.
+        float iterS;
+        float gate;
+        if (uLogIter) {
+            iterS = fract(log(mu) * uColorDensity + uColorOffset);
+            gate  = 1.0;
+        } else {
+            iterS = 1.0 - exp(-mu * uColorDensity);
+            gate  = smoothstep(0.20, 0.62, iterS);
+        }
         if (uStripeColor <= 0.0) {
             col = sampleIter(iterS);
         } else {
-            // Dual-palette ready: iter draws field from uPalette, stripe draws
-            // structure from uStripePalette (or uPalette if not provided).
-            vec3  stripeCol = sampleStripe(stripeS);
-            vec3  iterCol   = sampleIter(iterS);
-            float gate = smoothstep(0.20, 0.62, iterS);
+            vec3 stripeCol = sampleStripe(stripeS);
+            vec3 iterCol   = sampleIter(iterS);
             col = mix(iterCol, stripeCol * gate, uStripeColor);
         }
     }

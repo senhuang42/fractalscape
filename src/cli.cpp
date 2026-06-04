@@ -377,6 +377,59 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
     // plasma-storm: Mandelbrot in the inferno-valley zoom with RGB nebula on
     // top of an inferno palette. The R/G/B wisps add chromatic mist over an
     // already vivid escape-time render -- maximalist hybrid.
+    // --- Maths Town-style log-iter presets ---------------------------------
+    // The signature look of Adam's channel: concentric color bands radiating
+    // from the set boundary. Cyclic palette + log iteration coloring means
+    // each natural-log unit of escape time gets a fresh palette band, so the
+    // SAME relative depths always land on the same color (the camera flies
+    // through colored "rooms," instead of every pixel rainbow-shifting per
+    // frame). Stripe is off to keep the bands clean; angle-color adds a
+    // subtle hue rotation by boundary direction (Maths Town's "Angle" mode).
+
+    // mathstown-classic: whole-set Mandelbrot with the canonical concentric
+    // rainbow bands. The single most recognizable Maths Town aesthetic.
+    else if (name == "mathstown-classic") {
+        mandel(-0.5, 0.0, 1.4, 1000, "prism");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.log_iter = true; c.color_density = 1.0;
+        c.stripe_color = 0.0;
+        c.angle_color = 0.10;
+        c.bloom = 0.3;
+    }
+    // mathstown-seahorse: zoomed into the seahorse valley with denser bands.
+    // Each spiral arm's depth in the structure reads as which band it falls
+    // in, so the relative geometry pops without coloring details to death.
+    else if (name == "mathstown-seahorse") {
+        mandel(-0.74364388703, 0.13182590421, 0.005, 4000, "prism");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.log_iter = true; c.color_density = 1.5;
+        c.stripe_color = 0.0;
+        c.angle_color = 0.05;
+        c.bloom = 0.3;
+    }
+    // mathstown-deep: df64 deep zoom (~1e11x) on an exact Misiurewicz with
+    // log-iter active in deep.frag. Bands fly through the structure layer by
+    // layer as you dive in -- the Maths Town aesthetic in true deep zoom
+    // territory. Dark-anchored neon-dark palette so "lakes" stay dark.
+    else if (name == "mathstown-deep") {
+        mandel(-0.7432918908524302, 0.1312405523087976, 1e-11, 6000, "neon-dark");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.log_iter = true; c.color_density = 1.2;
+        c.stripe_color = 0.0;
+        c.deep = true;
+        c.bloom = 0.25;
+    }
+    // mathstown-cosmos: Julia + galaxy palette + log-iter cyclic. Bands swirl
+    // around the set in deep-space violets and pinks -- the "wider gamut"
+    // Maths Town aesthetic with a non-rainbow palette.
+    else if (name == "mathstown-cosmos") {
+        julia(-0.7269, 0.1889, 1.10, 2000, "galaxy");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.log_iter = true; c.color_density = 1.0;
+        c.stripe_color = 0.0;
+        c.angle_color = 0.08;
+        c.bloom = 0.35;
+    }
     else if (name == "plasma-storm") {
         mandel(-0.748, 0.1, 0.09, 2500, "inferno");
         c.interp = InterpMode::Oklab; c.bloom = 0.4;
@@ -420,6 +473,7 @@ const std::vector<std::string>& presetNames() {
         "nebula-ghost", "lifetime-spectrum", "hue-tide", "nebula-aurora",
         "nebula-seahorse", "nebula-elephant", "dragon-storm", "rabbit-ember",
         "dendrite-glow", "plasma-storm",
+        "mathstown-classic", "mathstown-seahorse", "mathstown-deep", "mathstown-cosmos",
         "burning-ship", "phoenix", "newton",
     };
     return kNames;
@@ -529,6 +583,14 @@ COMMON OPTIONS
       --nebula-rgb                Use 3-channel Nebulabrot as accent: wisps are
                                   multi-hued by orbit lifetime (--nebula-r/g/b
                                   thresholds apply). Disables --nebula-color.
+      --log-iter                  Maths Town-style log iteration coloring:
+                                  iterS = fract(log(mu)*color_density + offset)
+                                  instead of the default exp-compressed ramp.
+                                  Each decade of escape time gets a palette
+                                  band; deep zooms fly through colored zones
+                                  instead of saturating to the bright end.
+                                  Use color_density ~0.3-2.0 (not 0.035).
+                                  Pairs well with a cyclic palette.
 
   ALBUM-ART / DESIGN LAYER (all off at 0; see the cover-* presets)
       --kaleido <float>           N mirrored wedges -> mandala (default: 0/off)
@@ -771,6 +833,7 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "--nebula-hue-shift") { if (!cur.nextDouble(flag, cfg.nebula_hue_shift)) break; }
         else if (flag == "--nebula-bloom")     { if (!cur.nextDouble(flag, cfg.nebula_bloom)) break; }
         else if (flag == "--nebula-rgb")       { cfg.nebula_rgb = true; }
+        else if (flag == "--log-iter")         { cfg.log_iter = true; }
         // ---- album-art / design layer ----
         else if (flag == "--kaleido")    { if (!cur.nextDouble(flag, cfg.kaleido)) break; }
         else if (flag == "--kaleido-angle"){ if (!cur.nextDouble(flag, cfg.kaleido_angle)) break; }

@@ -31,6 +31,7 @@ uniform sampler2D uNebulaTex;     // optional Buddhabrot density accent (R-chann
 uniform bool      uHasStripePalette; // false -> reuse uPalette for stripe layer
 uniform bool      uColorInside;      // color set interior by SAC instead of flat
 uniform int       uPosterize;        // 0 = off, otherwise quantize sample pos
+uniform bool      uLogIter;          // Maths Town-style cyclic log-iter coloring
 uniform float     uNebulaWeight;     // strength of the nebula accent (0 = off)
 uniform vec3      uNebulaColor;      // wisp tint (multiplied by density); ignored in RGB mode
 uniform float     uNebulaHueShift;   // density modulates stripe sample position
@@ -264,22 +265,30 @@ void main() {
     if (uColorDensity <= 0.0) {
         col = sampleStripe(stripeS);                               // stripe alone
     } else {
-        // Iteration ramp: fast-escape gaps -> ~0, slow-escape structure -> ~1.
-        float iterS = 1.0 - exp(-mu * uColorDensity);
+        // Iteration coloring. Two modes:
+        //   exp (default): iterS = 1 - exp(-mu * density). Compresses high mu
+        //     to ~1 so deep structure saturates the palette top. A smoothstep
+        //     gate keeps fast-escape gaps dark.
+        //   log (Maths Town): iterS = fract(log(mu) * density + offset).
+        //     Cyclic -- each natural-log unit of mu gets a palette band, so
+        //     features at the same relative depth always land on the same
+        //     color. No iter gate (every exterior pixel reads a band color).
+        float iterS;
+        float gate;
+        if (uLogIter) {
+            iterS = fract(log(mu) * uColorDensity + uColorOffset);
+            gate  = 1.0; // bands all the way out; no fast-escape suppression
+        } else {
+            iterS = 1.0 - exp(-mu * uColorDensity);
+            gate  = smoothstep(0.20, 0.62, iterS);
+        }
         if (uStripeColor <= 0.0) {
             col = sampleIter(iterS);                               // iteration alone
         } else {
-            // Gate the stripe relief by the iteration layer: a smoothstep mask
-            // that is ~0 only in the true empty gaps and ~1 across structure
-            // AND the faint tendrils, so the relief shows at full brightness on
-            // the structure while the void stays black. The stripe layer may
-            // sample a SECOND palette (uStripePalette) -- that is what makes the
-            // dual-palette presets work: iter draws the FIELD from uPalette,
-            // stripe draws the STRUCTURE from uStripePalette, giving the field
-            // and the spirals genuinely different hues.
-            vec3  stripeCol = sampleStripe(stripeS);
-            vec3  iterCol   = sampleIter(iterS);
-            float gate = smoothstep(0.20, 0.62, iterS);
+            // Dual-palette ready: iter draws field from uPalette, stripe draws
+            // structure from uStripePalette (or uPalette if not provided).
+            vec3 stripeCol = sampleStripe(stripeS);
+            vec3 iterCol   = sampleIter(iterS);
             col = mix(iterCol, stripeCol * gate, uStripeColor);
         }
     }
