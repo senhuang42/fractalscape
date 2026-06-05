@@ -75,6 +75,9 @@ Everything composes, and every technique has a preset to start from:
 - **Slope-angle sheen** (`--sheen`): the *direction* of the escape-time
   gradient drives hue — an iridescent oil-film shimmer (`oil-slick`).
 
+The complete catalogue — every technique with its math, flags, source, and
+example preset — is in [TECHNIQUES.md](TECHNIQUES.md).
+
 ![TIA flames over a bof60 interior](assets/showcase/ember-sun.png)
 
 ## Animation

@@ -633,13 +633,18 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
         c.bloom = 0.3;
     }
     // flame-curl: curvature average in the seahorse valley. Where TIA's plumes
-    // flow outward, curvature's angular creases curl WITH the spiral arms.
+    // flow outward, curvature's angular creases curl WITH the spiral arms --
+    // molten gold under slopes lighting. NOTE stripe_contrast stays at 1.0:
+    // curvature averages cluster low at deep boundary zooms, and the usual
+    // ~3x stretch around 0.5 clamps the whole frame to the dark end (this
+    // preset rendered solid black until that was caught).
     else if (name == "flame-curl") {
         mandel(-0.74364388703, 0.13182590421, 1.35 / 120.0, 2500, "ember");
         c.cyclic = true; c.interp = InterpMode::Oklab;
         c.relief_mode = ReliefMode::Curvature;
-        c.stripe_contrast = 3.2;
+        c.stripe_contrast = 1.0;
         c.color_density = 0.0;
+        c.slopes = 0.45; c.slopes_spec = 0.3;
         c.bloom = 0.35;
     }
     // peitgen-grid: binary decomposition, the iconic Beauty-of-Fractals B/W

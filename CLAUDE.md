@@ -75,6 +75,8 @@ make test                    # -> ./run_tests (GL-free unit tests)
 3. If it affects rendering: a `uniform` in the relevant shader + a
    `setUniform*` call in `renderer.cpp::render()`.
 4. A test in `tests/test_cli.cpp`.
+5. If it's a new rendering/coloring technique: a row in `TECHNIQUES.md` (the
+   catalogue of every technique with math, flags, source, and example preset).
 
 ## Gotchas / hard-won lessons
 
@@ -171,7 +173,10 @@ make test                    # -> ./run_tests (GL-free unit tests)
   4. *Curvature average is flat on whole-set views* (interior-adjacent orbits
      all bend alike); it needs a boundary zoom where bending varies
      (`marble-vein` sits at the rabbit ear junction, `flame-curl` in seahorse
-     valley).
+     valley). AND its values cluster LOW at deep boundary zooms — the usual
+     ~3x stripe_contrast stretch around 0.5 clamps the whole frame to the
+     dark end (flame-curl rendered solid black at contrast 3.2; it needs 1.0,
+     marble-vein needs a color_offset to land off the dark anchor).
   Also: `--sheen` shifts the stripe palette coord (and log-iter bands) — with
   `stripe_color 0` and exp coloring it's a silent no-op by design.
 - **Zoom videos**: the default path is 32-bit float -> pixelates past ~1e4×.
