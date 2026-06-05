@@ -16,7 +16,7 @@ cd "$ROOT"
 
 APP="FractalScape.app"
 CONTENTS="$APP/Contents"
-ICON_SRC="${ICON_SRC:-assets/nebulabrot.png}"
+ICON_SRC="${ICON_SRC:-assets/docs/nebulabrot.png}"
 
 [ -x ./fractal ] || { echo "error: ./fractal not built (run 'make' first)"; exit 1; }
 

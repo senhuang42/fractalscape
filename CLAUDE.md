@@ -128,7 +128,7 @@ make test                    # -> ./run_tests (GL-free unit tests)
 - **Presets** (`applyPreset` in `cli.cpp`) are curated c+framing+palette combos
   applied as a base in a pre-scan, so explicit flags override them. Add new ones
   there AND in `presetNames()` AND a test in `test_cli.cpp`. Per-preset example
-  stills live in `assets/presets/<name>.png`; `assets/presets.png` is the
+  stills live in `assets/presets/<name>.png`; `assets/docs/presets.png` is the
   `montage` contact sheet of them (regenerate both when adding a preset).
 - **A cyclic palette is the key to a multi-hue image.** A non-cyclic ramp on a
   region whose stripe/iter values cluster reads as ONE hue (e.g. all teal). The
@@ -171,7 +171,7 @@ make test                    # -> ./run_tests (GL-free unit tests)
   iterS saturates regardless); `--color-offset` only relocates the hue. The
   `neon-dark` palette brackets the neon hues with a broad dark band for exactly
   this, and because both ends are dark it can be CYCLED: the background then
-  breathes black -> jewel tones instead of olive. assets/zoom_neon_dust.mp4 uses
+  breathes black -> jewel tones instead of olive. assets/videos/zoom_neon_dust.mp4 uses
   it with a slow one-cycle sweep. (Caveat: cycling rotates the whole ramp, so
   "lakes" are only black for the part of the cycle the dark band covers -- a
   broad dark band keeps them dark most of the time; you can't have permanently
@@ -184,7 +184,7 @@ make test                    # -> ./run_tests (GL-free unit tests)
   --cim]` -> paste the printed `--deep` video command. Verified neon-dust target
   (c=0.285+0.01i): period-79 repelling point at
   (-0.5265090209000343, 0.1889619338054614), |multiplier| 96623, sharp to ~1e-12
-  -> assets/zoom_neon_dust.mp4. NOTE the period-79 center came out the same to 15
+  -> assets/videos/zoom_neon_dust.mp4. NOTE the period-79 center came out the same to 15
   digits in double and df64 -- at the EXACT periodic point the orbit is bounded
   so there's no error amplification; the multiplier only blows up precision when
   you're off the point. The df64 solver still matters as insurance for very high
@@ -244,3 +244,7 @@ make test                    # -> ./run_tests (GL-free unit tests)
 - Keep GL strictly inside `renderer.cpp`. Everything else stays testable.
 - Default parameter values are tuned to look good with a bare `fractal render`;
   if you retune defaults, re-check the gallery in `assets/` and update README.
+- `assets/` layout: `docs/` (images embedded in README), `presets/` (one still
+  per preset), `showcase/` (curated renders not in the README), `videos/`
+  (loop/zoom MP4s). New renders go in one of those four — no loose files at
+  the top level.

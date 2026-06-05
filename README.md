@@ -6,7 +6,7 @@ A GPU command-line renderer for Julia and Mandelbrot fractals. It outputs stills
 coloring is stripe-average relief over an escape-time layer; see
 [how it works](#how-it-works).
 
-![grayscale stripe-average spiral](assets/hero_noir.png)
+![grayscale stripe-average spiral](assets/docs/hero_noir.png)
 
 ## Build
 
@@ -36,7 +36,7 @@ fractal render -P acid-swirl --size 2000x2000 -o trippy.png
 fractal render -P frostbite --cre -0.8 -p ocean -o custom.png   # presets are defaults
 ```
 
-![preset gallery](assets/presets.png)
+![preset gallery](assets/docs/presets.png)
 
 ## Fractal families
 
@@ -56,10 +56,10 @@ fractal render -t mandelbrot --formula tricorn -p frost -o tricorn.png
 
 | mode | what moves | example |
 |---|---|---|
-| `rotate` | Julia constant orbits, so the shape morphs | [loop_rotate.mp4](assets/loop_rotate.mp4) |
-| `cycle` | palette sweeps one full cycle | [loop_cycle.mp4](assets/loop_cycle.mp4) |
-| `spin` | a kaleidoscope axis turns one full revolution | [loop_spin.mp4](assets/loop_spin.mp4) |
-| `zoom` | continuous dive toward a target (one-shot, not a loop) | [zoom_seahorse.mp4](assets/zoom_seahorse.mp4) |
+| `rotate` | Julia constant orbits, so the shape morphs | [loop_rotate.mp4](assets/videos/loop_rotate.mp4) |
+| `cycle` | palette sweeps one full cycle | [loop_cycle.mp4](assets/videos/loop_cycle.mp4) |
+| `spin` | a kaleidoscope axis turns one full revolution | [loop_spin.mp4](assets/videos/loop_spin.mp4) |
+| `zoom` | continuous dive toward a target (one-shot, not a loop) | [zoom_seahorse.mp4](assets/videos/zoom_seahorse.mp4) |
 
 ```sh
 fractal video -P cover-mandala --mode spin -d 8 -o spin.mp4
@@ -75,10 +75,10 @@ Off-by-default toggles: `--kaleido N` (mirrored-wedge mandala), `--aberration`
 presets combine them on the neon `vice` palette. Render at `--size 3000x3000`
 for streaming or print.
 
-![cover modes](assets/covers.png)
+![cover modes](assets/docs/covers.png)
 
 Mix them onto any render, for example `fractal render -P ember-seahorse
---kaleido 12 --vignette 0.4`. [assets/test_cover.png](assets/test_cover.png) is
+--kaleido 12 --vignette 0.4`. [assets/showcase/cover.png](assets/showcase/cover.png) is
 the `cover-hero` location with the `cover-glitch` treatment.
 
 ## Buddhabrot and Nebulabrot
@@ -100,7 +100,7 @@ iteration thresholds into red, green, and blue for the classic Nebulabrot;
 without it the single-channel density is colored through the palette. Quadratic
 only, and it is happiest on wide views.
 
-![nebulabrot](assets/nebulabrot.png)
+![nebulabrot](assets/docs/nebulabrot.png)
 
 ## Interactive explorer
 
@@ -161,9 +161,9 @@ fractal render -t mandelbrot --center-x -0.743643887037151 \
   --center-y 0.131825904205330 --scale 1e-11 -i 3000 --deep -p magma -o deep.png
 ```
 
-![10^11x deep zoom](assets/deep_zoom.png)
+![10^11x deep zoom](assets/docs/deep_zoom.png)
 
-[zoom_neon_dust.mp4](assets/zoom_neon_dust.mp4) is a `--deep` dive of about ten
+[zoom_neon_dust.mp4](assets/videos/zoom_neon_dust.mp4) is a `--deep` dive of about ten
 decades into a spiral of the neon-dust Julia set, down to the df64 wall, on the
 `neon-dark` palette with a slow one-cycle palette sweep (`--color-cycles 1`).
 The `neon-dark` palette brackets the neon hues with a broad dark band: at deep
