@@ -71,6 +71,58 @@ inline EscapeResult julia(double px, double py, double cre, double cim,
     return escapeTime({px, py}, {cre, cim}, max_iter, bailout, exponent);
 }
 
+// Orbit statistics that drive the literature coloring modes, mirroring the
+// accumulators in shaders/fractal.frag:
+//   * min_mag / min_iter — the orbit's closest approach to the origin and the
+//     iteration it happened at (bof60 / bof61 "atom domain" interior modes).
+//   * exp_sum — sum of exp(-1/min(|z_n - z_{n-1}|, |z_n - z_{n-2}|))
+//     (exponential smoothing, convergent form; grows while the orbit is still
+//     moving — the z_{n-2} term lets period-2 cycles read as converged).
+//   * curv_avg — average turning angle |arg((z_n - z_{n-1})/(z_{n-1} -
+//     z_{n-2}))|/pi over the orbit (curvature average relief, Haerkoenen 2007
+//     eq 4.8; the shader skips the first two iterations the same way).
+struct OrbitStats {
+    bool   escaped;
+    int    iter;
+    double min_mag;   // min |z_n| over the orbit
+    int    min_iter;  // iteration index of that minimum
+    double exp_sum;
+    double curv_avg;
+};
+
+inline OrbitStats orbitStats(std::complex<double> z,
+                             std::complex<double> c,
+                             int    max_iter,
+                             double bailout) {
+    const double bail2 = bailout * bailout;
+    OrbitStats st{false, max_iter, 1e20, 0, 0.0, 0.0};
+    std::complex<double> zprev = 0.0, zprev2 = 0.0;
+    double curv_sum = 0.0;
+    int    curv_n   = 0;
+    double last     = 0.0;
+    for (int i = 0; i < max_iter; ++i) {
+        zprev2 = zprev;
+        zprev  = z;
+        z      = z * z + c;
+        const double m2 = std::norm(z);
+        if (m2 < st.min_mag * st.min_mag) { st.min_mag = std::sqrt(m2); st.min_iter = i; }
+        if (i >= 2) st.exp_sum += std::exp(-1.0 / std::max(std::min(std::abs(z - zprev),
+                                                                    std::abs(z - zprev2)), 1e-12));
+        if (i >= 2) { // mirrors the shader's kStripeSkip + 1 for curvature
+            const std::complex<double> den = zprev - zprev2;
+            double term = last;
+            if (std::norm(den) > 1e-30)
+                term = std::abs(std::arg((z - zprev) / den)) / M_PI;
+            last = term;
+            curv_sum += term;
+            curv_n++;
+        }
+        if (m2 > bail2) { st.escaped = true; st.iter = i + 1; break; }
+    }
+    st.curv_avg = curv_n > 0 ? curv_sum / curv_n : 0.0;
+    return st;
+}
+
 // Distance estimate to the fractal boundary, mirroring shaders/fractal.frag.
 // Tracks the derivative dz alongside z (z'_{n+1} = 2 z_n z'_n [+1 for the
 // Mandelbrot dz/dc]). Returns a negative value for points that never escaped

@@ -50,6 +50,33 @@ fractal render -P burning-ship -o ship.png
 fractal render -t mandelbrot --formula tricorn -p frost -o tricorn.png
 ```
 
+## Coloring techniques
+
+The default look is two layers — a smooth-iteration ramp for structure and
+Stripe Average Coloring for relief — but the full vocabulary goes much further.
+Everything composes, and every technique has a preset to start from:
+
+- **Relief modes** (`--relief`): `sac` orbit-angle fur (default), `tia`
+  triangle-inequality flame plumes (`flame-mandel`), `curvature` angular
+  marbled ridgelines from the orbit path's turning angle (`marble-vein`).
+- **Interior modes** (`--interior`): the set body doesn't have to be black.
+  `bof60` colors by the orbit's closest approach to the origin — the glowing
+  nested-embryo render from *The Beauty of Fractals* p.60 (`ember-eyes`);
+  `bof61` by *which* iteration came closest — flat atom-domain cells keyed to
+  period (`atom-cells`); `expsmooth` by convergence speed (`glass-lake`);
+  `sac` by the orbit's stripe value (`interior-bloom`).
+- **Binary decomposition** (`--decomp`): the classic Peitgen black/white grid
+  of external rays x equipotentials (`peitgen-grid`), or as a color overlay on
+  log-iter bands (`ray-stain`).
+- **Orbit statistics**: shaped orbit traps — point, cross, circle, astroid,
+  diamond, hyperbola, waves, log-spiral (`--trap-shape`, `whirlpool`,
+  `neon-astroid`); Pickover stalks (`stardust`); Gaussian-integer lattice
+  distance for a crystalline grid texture (`--gauss-color`, `crystal-court`).
+- **Slope-angle sheen** (`--sheen`): the *direction* of the escape-time
+  gradient drives hue — an iridescent oil-film shimmer (`oil-slick`).
+
+![TIA flames over a bof60 interior](assets/showcase/ember-sun.png)
+
 ## Animation
 
 `fractal video` has four modes. Three of them are seamless loops:

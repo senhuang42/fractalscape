@@ -32,15 +32,39 @@ enum class Formula {
 // Which per-iteration statistic drives the relief layer (the layer combined
 // with the iter ramp via uStripeColor). SAC averages a sine of the orbit
 // angle; TIA averages where |z'+c| lies between the triangle-inequality bounds
-// ||z'|-|c|| and |z'|+|c|. SAC gives the classical fur/relief texture; TIA
-// gives flame-like patterns extending outward from the boundary.
-enum class ReliefMode { SAC = 0, TIA = 1 };
+// ||z'|-|c|| and |z'|+|c|; Curvature averages the orbit path's turning angle
+// |arg((z_n - z_{n-1})/(z_{n-1} - z_{n-2}))|/pi (Haerkoenen 2007 eq 4.8).
+// SAC gives the classical fur/relief texture; TIA gives flame-like patterns
+// extending outward from the boundary; Curvature gives sharper, more angular
+// marbled ridgelines (a triangle-wave where SAC/TIA are sinusoidal).
+enum class ReliefMode { SAC = 0, TIA = 1, Curvature = 2 };
 
 // Shape of the orbit trap (orbit's min distance feeds --trap-color). Point
 // gives the classical bullseye-around-a-point look. Cross uses distance to
 // the two axes through the trap point. Circle uses |dist - radius|, giving
-// concentric ring patterns wherever orbits graze the ring.
-enum class TrapShape { Point = 0, Cross = 1, Circle = 2 };
+// concentric ring patterns wherever orbits graze the ring. The rest are the
+// classic Ultra Fractal shape vocabulary (closed-form distances, see the trap
+// dispatch in fractal.frag): Astroid (4-pointed star), Diamond (|x|+|y|),
+// Hyperbola (|x*y - r|), Waves (a sine-corrugated horizontal line), Spiral
+// (logarithmic spiral arms, twist set by trap_freq).
+enum class TrapShape { Point = 0, Cross = 1, Circle = 2,
+                       Astroid = 3, Diamond = 4, Hyperbola = 5,
+                       Waves = 6, Spiral = 7 };
+
+// How to color the set INTERIOR (orbits that never escape).
+//   Flat      - the flat inside_color (the original behavior).
+//   SAC       - the orbit's accumulated stripe value (the old --color-inside).
+//   Bof60     - sqrt of the orbit's closest approach to the origin ("Beauty of
+//               Fractals" p.60): glowing nested "embryo" structure inside each
+//               component.
+//   Bof61     - the iteration index of that closest approach (atom domains):
+//               flat cells tiling the interior by period.
+//   ExpSmooth - exponential smoothing of the convergence, sum of
+//               exp(-1/|z_n - z_{n-1}|): a smooth radial glow that brightens
+//               where orbits take longer to settle.
+// Bof60/Bof61/ExpSmooth sample inside_palette (falling back to the main
+// palette), same as SAC.
+enum class InteriorMode { Flat = 0, SAC = 1, Bof60 = 2, Bof61 = 3, ExpSmooth = 4 };
 
 // Color space in which palette gradient stops are interpolated.
 //   Rgb   - direct lerp in sRGB space. The original behavior; predictable but
@@ -179,13 +203,36 @@ struct RenderConfig {
     ReliefMode relief_mode = ReliefMode::SAC;
     // Orbit-trap shape (point = byte-compat). Cross adds line traps to the
     // two axes through (trap_x, trap_y); Circle uses |dist - trap_radius|.
+    // See TrapShape for the full UF-style shape vocabulary.
     TrapShape  trap_shape  = TrapShape::Point;
-    double     trap_radius = 0.5;  // only used for Circle shape
+    double     trap_radius = 0.5;  // shape size (Circle/Astroid/Diamond/...)
+    // Waves: sine frequency along the trap line. Spiral: arm twist (turns of
+    // twist per e-fold of radius). Unused by the other shapes.
+    double     trap_freq   = 6.0;
     // Pickover stalks: the orbit's minimum distance to x or y axis, mapped
     // through exp(-stalk_freq * min_dist). High value -> orbit grazed an
     // axis. Mixed into the stripe-palette sample at strength stalk_color.
     double     stalk_color = 0.0;
     double     stalk_freq  = 6.0;
+    // Gaussian integer coloring: the orbit's minimum distance to the nearest
+    // Gaussian integer lattice point (round(z)), mapped through
+    // exp(-gauss_freq * min_dist) and mixed into the stripe sample like
+    // stalks. Lays a crystalline / cellular grid texture over the fractal --
+    // unlike any orbit-angle statistic (Ultra Fractal "Gaussian Integer").
+    double     gauss_color = 0.0;
+    double     gauss_freq  = 6.0;
+    // Binary decomposition overlay (Peitgen "Beauty of Fractals" grid): at
+    // escape, split each dwell band into 2^decomp angular cells by arg(z_N)
+    // and darken alternate cells by decomp_strength. The cell edges trace
+    // external rays (field lines) and equipotentials. 0 = off.
+    int        decomp          = 0;
+    double     decomp_strength = 0.6;
+    // Slope-angle sheen: hue shift from the DIRECTION of the escape-time
+    // gradient (atan2 of the screen-space gradient of log(mu)). Where
+    // --slopes uses the gradient for lighting, this routes it to color: an
+    // iridescent, oil-film directional sheen. 0 = off; pairs best with a
+    // cyclic palette (it shifts the palette sample position).
+    double     sheen = 0.0;
     // Separate palette for the stripe (SAC) layer. Empty -> use main palette for
     // both layers (the original behavior). When set, the iter layer samples the
     // main palette and the stripe layer samples this one, so field and structure
@@ -195,11 +242,11 @@ struct RenderConfig {
     // gradient, old behavior); 2..32 quantizes to that many color bands for a
     // screen-print / stained-glass look.
     int    posterize     = 0;
-    // Color the set INTERIOR (orbits that never escape) by their SAC value
-    // instead of the flat inside_color. Off by default; when on, samples the
-    // main palette (or inside_palette below) at the orbit's stripe value.
-    bool   color_inside  = false;
-    // Optional separate palette for the interior, when color_inside is true.
+    // How to color the set INTERIOR (orbits that never escape). Flat = the
+    // inside_color (default). See InteriorMode for the bof60/bof61/expsmooth
+    // literature modes; SAC is the old --color-inside behavior.
+    InteriorMode interior_mode = InteriorMode::Flat;
+    // Optional separate palette for the interior, when interior_mode != Flat.
     // Empty -> use the main palette.
     std::vector<Color> inside_palette;
 

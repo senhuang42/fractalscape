@@ -153,7 +153,7 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
     else if (name == "interior-bloom") {
         julia(-0.122, 0.745, 1.40, 1500, "ember");
         c.cyclic = true; c.interp = InterpMode::Oklab;
-        c.color_inside = true;
+        c.interior_mode = InteriorMode::SAC;
         parsePalette("galaxy", c.inside_palette);
         c.bloom = 0.3;
     }
@@ -232,7 +232,7 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
     else if (name == "lava-lake") {
         julia(-0.122, 0.745, 1.40, 1500, "fire");
         c.cyclic = true; c.interp = InterpMode::Oklab;
-        c.color_inside = true; c.bloom = 0.35;
+        c.interior_mode = InteriorMode::SAC; c.bloom = 0.35;
         parsePalette("ice", c.inside_palette);
     }
     // magma-core: dark mono exterior, magma glowing INSIDE the set. Like
@@ -241,7 +241,7 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
     else if (name == "magma-core") {
         julia(-0.122, 0.745, 1.40, 1500, "noir");
         c.cyclic = false; c.interp = InterpMode::Oklab;
-        c.color_inside = true; c.bloom = 0.4;
+        c.interior_mode = InteriorMode::SAC; c.bloom = 0.4;
         parsePalette("magma", c.inside_palette);
     }
     // vaporwave-poster: vapor palette posterized to discrete bands. Pink/cyan/
@@ -352,7 +352,7 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
         julia(-0.122, 0.745, 0.6, 1500, "frost");
         c.center_x = 0.0; c.center_y = 0.55;
         c.cyclic = true; c.interp = InterpMode::Oklab;
-        c.color_inside = true;
+        c.interior_mode = InteriorMode::SAC;
         parsePalette("ember", c.inside_palette);
         c.nebula_hue_shift = 0.15; c.nebula_accent = 0.25;
         c.nebula_color = {1, 1, 1};
@@ -578,6 +578,135 @@ bool applyPreset(const std::string& name, VideoConfig& c, std::string& palette_s
         c.nebula_accent_samples = 40.0;
         c.vignette = 0.3;
     }
+    // --- Literature coloring presets (curvature / interiors / decomposition /
+    // Gaussian integer / sheen / shaped traps). Each showcases one technique
+    // researched from Haerkoenen 2007, Beauty of Fractals, Ultra Fractal's
+    // standard library, FractInt, and mathr.co.uk.
+
+    // ember-eyes: bof60 interior, the classic Beauty-of-Fractals p.60 render.
+    // MANDELBROT interior: each pixel is a different c, so the closest
+    // approach to the origin varies across the body and fills the cardioid
+    // and bulbs with glowing nested "embryo" structure. (A Julia interior
+    // mostly doesn't work here: every orbit falls into the same attracting
+    // cycle, so the statistic flattens -- learned the hard way.)
+    else if (name == "ember-eyes") {
+        mandel(-0.5, 0.0, 1.40, 1500, "noir");
+        c.interp = InterpMode::Oklab;
+        c.interior_mode = InteriorMode::Bof60;
+        parsePalette("ember", c.inside_palette);
+        c.bloom = 0.4; c.bloom_threshold = 0.4;
+    }
+    // atom-cells: bof61 / atom domains. The interior tiled by WHICH iteration
+    // passed closest to the origin -- flat stained-glass cells keyed to period
+    // structure, in saturated jewel tones.
+    else if (name == "atom-cells") {
+        mandel(-0.5, 0.0, 1.4, 1000, "noir");
+        c.interp = InterpMode::Oklab;
+        c.interior_mode = InteriorMode::Bof61;
+        parsePalette("jewel", c.inside_palette);
+        c.bloom = 0.25;
+    }
+    // glass-lake: exponential smoothing interior. The basilica Julia's big
+    // interior basins filled with a smooth convergence glow -- brightest where
+    // orbits take longest to settle, like light through deep water.
+    else if (name == "glass-lake") {
+        julia(-1.0, 0.0, 1.50, 1500, "frost");
+        c.interp = InterpMode::Oklab;
+        c.interior_mode = InteriorMode::ExpSmooth;
+        parsePalette("ice", c.inside_palette);
+        c.bloom = 0.35;
+    }
+    // marble-vein: curvature average relief. The orbit path's turning angle
+    // replaces SAC's orbit angle -- sharper, more angular ridgelines that read
+    // as veined marble. Curvature is flat on whole-set views (interior-
+    // adjacent orbits all bend alike); it needs a boundary zoom where the
+    // bending varies -- the rabbit's ear junction gives flowing white veins
+    // through deep blue stone.
+    else if (name == "marble-vein") {
+        julia(-0.122, 0.745, 0.45, 2500, "frost");
+        c.center_x = 0.0; c.center_y = 0.55;
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.relief_mode = ReliefMode::Curvature;
+        c.stripe_contrast = 3.0; c.color_offset = 0.2;
+        c.color_density = 0.0;       // stripe-only -> pure curvature story
+        c.slopes = 0.4; c.slopes_spec = 0.25;
+        c.bloom = 0.3;
+    }
+    // flame-curl: curvature average in the seahorse valley. Where TIA's plumes
+    // flow outward, curvature's angular creases curl WITH the spiral arms.
+    else if (name == "flame-curl") {
+        mandel(-0.74364388703, 0.13182590421, 1.35 / 120.0, 2500, "ember");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.relief_mode = ReliefMode::Curvature;
+        c.stripe_contrast = 3.2;
+        c.color_density = 0.0;
+        c.bloom = 0.35;
+    }
+    // peitgen-grid: binary decomposition, the iconic Beauty-of-Fractals B/W
+    // checkered exterior. Dwell bands x escape-argument cells; the cell edges
+    // ARE the external rays and equipotentials of the set.
+    else if (name == "peitgen-grid") {
+        mandel(-0.5, 0.0, 1.4, 600, "mono");
+        c.stripe_color = 0.0;
+        c.color_density = 0.05;
+        c.decomp = 1; c.decomp_strength = 0.85;
+        c.bloom = 0.0;
+    }
+    // ray-stain: decomposition as a color overlay on log-iter bands. The
+    // gateless log-iter exterior gives every pixel a band color, so the 2^2
+    // angular cells show all the way out -- a prism rose window whose leading
+    // is the set's external rays. (Decomp over gated SAC doesn't read: the
+    // cells live in the fast-escape exterior, which the gate paints black.)
+    else if (name == "ray-stain") {
+        mandel(-0.5, 0.0, 1.4, 1000, "prism");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.log_iter = true; c.color_density = 1.0;
+        c.stripe_color = 0.0;
+        c.decomp = 2; c.decomp_strength = 0.5;
+        c.bloom = 0.3;
+    }
+    // crystal-court: Gaussian integer coloring. Pixels keyed to how close the
+    // orbit ever passed to the unit lattice -- a crystalline cellular grid
+    // texture laid over the plane, unlike any orbit-angle statistic.
+    else if (name == "crystal-court") {
+        julia(-0.512511, 0.521295, 1.30, 2000, "electric");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.gauss_color = 0.8; c.gauss_freq = 7.0;
+        c.color_density = 0.0; c.stripe_color = 0.0;
+        c.bloom = 0.4;
+    }
+    // oil-slick: slope-angle sheen on log-iter bands. The DIRECTION of the
+    // escape-time gradient drives hue, so the bands shimmer like an oil film
+    // -- iridescence that rotates as the structure curves.
+    else if (name == "oil-slick") {
+        mandel(-0.74364388703, 0.13182590421, 1.35 / 350.0, 2500, "prism");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.log_iter = true; c.color_density = 0.8;
+        c.stripe_color = 0.0;
+        c.sheen = 0.5;
+        c.slopes = 0.45; c.slopes_spec = 0.3;
+        c.bloom = 0.3;
+    }
+    // whirlpool: logarithmic-spiral orbit trap. Trap arms wind through the
+    // dendrite Julia, pulling its filaments into one continuous vortex.
+    else if (name == "whirlpool") {
+        julia(-0.8, 0.156, 1.30, 2000, "ocean");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.trap_color = 1.2; c.trap_shape = TrapShape::Spiral;
+        c.trap_freq = 3.0;
+        c.color_density = 0.0; c.stripe_color = 0.0;
+        c.bloom = 0.35;
+    }
+    // neon-astroid: astroid orbit trap. Four-pointed-star bands echo through
+    // the whole exterior in electric cyan/magenta.
+    else if (name == "neon-astroid") {
+        mandel(-0.5, 0.0, 1.4, 1000, "electric");
+        c.cyclic = true; c.interp = InterpMode::Oklab;
+        c.trap_color = 1.5; c.trap_shape = TrapShape::Astroid;
+        c.trap_radius = 1.0;
+        c.color_density = 0.0; c.stripe_color = 0.0;
+        c.bloom = 0.4;
+    }
     // Other iteration formulas (--formula). SAC coloring carries over to all the
     // escape-time ones; Newton has its own basin coloring.
     else if (name == "burning-ship") { // the "armada", reflected and jagged
@@ -614,6 +743,9 @@ const std::vector<std::string>& presetNames() {
         "mathstown-teal", "mathstown-sepia", "mathstown-chrome", "mathstown-honey",
         "flame-mandel", "flame-spiral", "stardust", "stargate", "starcross",
         "tia-relief",
+        "ember-eyes", "atom-cells", "glass-lake", "marble-vein", "flame-curl",
+        "peitgen-grid", "ray-stain", "crystal-court", "oil-slick", "whirlpool",
+        "neon-astroid",
         "burning-ship", "phoenix", "newton",
     };
     return kNames;
@@ -702,10 +834,19 @@ COMMON OPTIONS
       --posterize <int>           Quantize gradient to N flat bands (default: 0/
                                   off, otherwise 2..32). Screen-print / stained-
                                   glass look; great with --interp oklab.
-      --color-inside              Color set INTERIOR by orbit SAC instead of
-                                  --inside flat. Off by default.
-      --inside-palette <spec>     Palette for set interior when --color-inside
-                                  (default: reuse main palette).
+      --interior <mode>           Set-INTERIOR coloring mode (default: flat =
+                                  the --inside color). sac = the orbit's
+                                  stripe value. bof60 = closest approach to
+                                  the origin (glowing nested "embryo" shapes,
+                                  Beauty of Fractals p.60). bof61 = iteration
+                                  of closest approach (flat atom-domain cells
+                                  keyed by period). expsmooth = exponential
+                                  smoothing of convergence (smooth glow,
+                                  brightest where orbits settle slowest;
+                                  --color-density tunes it).
+      --color-inside              Alias for --interior sac (the older flag).
+      --inside-palette <spec>     Palette for set interior when --interior is
+                                  not flat (default: reuse main palette).
       --nebula-accent <float>     Overlay a Buddhabrot orbit-density "ghost"
                                   layer on top of the escape-time render
                                   (default: 0/off). A genuinely orthogonal
@@ -741,22 +882,49 @@ COMMON OPTIONS
                                   direction; --slopes-spec adds highlights.
       --slopes-spec <float>       Specular highlight strength for --slopes
                                   (default 0). Tightness reuses --shininess.
-      --relief <sac|tia>          Relief-layer mode (default sac). tia =
+      --relief <sac|tia|curvature>
+                                  Relief-layer mode (default sac). tia =
                                   Triangle Inequality Average: average of
                                   where |z'+c| falls in the [||z'|-|c||,
                                   |z'|+|c|] window each iteration. Gives
                                   flame-like patterns instead of SAC fur.
-      --trap-shape <point|cross|circle>
-                                  Geometric orbit-trap shape (default point).
-                                  cross = distance to two axes through the
-                                  trap point. circle = |dist - trap_radius|.
-      --trap-radius <float>       Radius for --trap-shape circle (default 0.5).
+                                  curvature = average turning angle of the
+                                  orbit path: sharper, angular marbled
+                                  ridgelines (Haerkoenen 2007 eq 4.8).
+      --trap-shape <name>         Geometric orbit-trap shape (default point).
+                                  point|cross|circle|astroid|diamond|
+                                  hyperbola|waves|spiral -- the classic Ultra
+                                  Fractal shape vocabulary; each shape's
+                                  closed-form distance is trapped over the
+                                  orbit and colored by --trap-color.
+      --trap-radius <float>       Trap shape size (default 0.5).
+      --trap-freq <float>         Waves sine frequency / spiral arm twist
+                                  (default 6.0).
       --stalk-color <float>       Pickover stalks: min orbit distance to x/y
                                   axes, mapped to a stripe contribution. 0=off,
                                   ~0.2-0.6 typical. Reveals cross/stalk patterns
                                   not visible to SAC or trap.
       --stalk-freq <float>        Stalk falloff sharpness (default 6.0).
                                   Higher = thinner/sharper stalk highlights.
+      --gauss-color <float>       Gaussian integer coloring: min orbit
+                                  distance to the nearest integer lattice
+                                  point, as a stripe contribution (0=off,
+                                  ~0.4-0.8 typical). Crystalline grid texture
+                                  unlike any orbit-angle statistic.
+      --gauss-freq <float>        Lattice falloff sharpness (default 6.0).
+      --decomp <int>              Binary decomposition overlay: split each
+                                  dwell band into 2^k cells by escape angle
+                                  and darken alternate cells (default 0/off;
+                                  1 = the classic Peitgen B/W grid). Cell
+                                  edges trace external rays/equipotentials.
+      --decomp-strength <float>   How dark the alternate cells go, 0..1
+                                  (default 0.6).
+      --sheen <float>             Slope-angle sheen: the DIRECTION of the
+                                  escape-time gradient drives a hue shift --
+                                  iridescent oil-film color that rotates with
+                                  the structure (default 0/off; ~0.3-0.6).
+                                  Shifts the stripe layer (and log-iter
+                                  bands); best with a cyclic palette.
 
   ALBUM-ART / DESIGN LAYER (all off at 0; see the cover-* presets)
       --kaleido <float>           N mirrored wedges -> mandala (default: 0/off)
@@ -985,7 +1153,17 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
             if (!cur.nextInt(flag, cfg.posterize)) break;
             if (cfg.posterize < 0) { fail("--posterize must be >= 0 (0 = off, otherwise 2..)"); break; }
         }
-        else if (flag == "--color-inside") { cfg.color_inside = true; }
+        // --color-inside predates --interior; kept as an alias for the SAC mode.
+        else if (flag == "--color-inside") { cfg.interior_mode = InteriorMode::SAC; }
+        else if (flag == "--interior") {
+            std::string v; if (!cur.nextStr(flag, v)) break;
+            if      (v == "flat")      cfg.interior_mode = InteriorMode::Flat;
+            else if (v == "sac")       cfg.interior_mode = InteriorMode::SAC;
+            else if (v == "bof60")     cfg.interior_mode = InteriorMode::Bof60;
+            else if (v == "bof61")     cfg.interior_mode = InteriorMode::Bof61;
+            else if (v == "expsmooth") cfg.interior_mode = InteriorMode::ExpSmooth;
+            else { fail("--interior must be flat, sac, bof60, bof61, or expsmooth; got '" + v + "'"); break; }
+        }
         else if (flag == "--inside-palette") {
             std::string v; if (!cur.nextStr(flag, v)) break;
             if (!parsePalette(v, cfg.inside_palette)) { fail("--inside-palette: unknown name or invalid hex list: '" + v + "'"); break; }
@@ -1004,20 +1182,35 @@ ParsedArgs parseArgs(const std::vector<std::string>& args) {
         else if (flag == "--slopes-spec")      { if (!cur.nextDouble(flag, cfg.slopes_spec)) break; }
         else if (flag == "--relief") {
             std::string v; if (!cur.nextStr(flag, v)) break;
-            if      (v == "sac") cfg.relief_mode = ReliefMode::SAC;
-            else if (v == "tia") cfg.relief_mode = ReliefMode::TIA;
-            else { fail("--relief must be sac or tia; got '" + v + "'"); break; }
+            if      (v == "sac")       cfg.relief_mode = ReliefMode::SAC;
+            else if (v == "tia")       cfg.relief_mode = ReliefMode::TIA;
+            else if (v == "curvature") cfg.relief_mode = ReliefMode::Curvature;
+            else { fail("--relief must be sac, tia, or curvature; got '" + v + "'"); break; }
         }
         else if (flag == "--trap-shape") {
             std::string v; if (!cur.nextStr(flag, v)) break;
-            if      (v == "point")  cfg.trap_shape = TrapShape::Point;
-            else if (v == "cross")  cfg.trap_shape = TrapShape::Cross;
-            else if (v == "circle") cfg.trap_shape = TrapShape::Circle;
-            else { fail("--trap-shape must be point, cross, or circle; got '" + v + "'"); break; }
+            if      (v == "point")     cfg.trap_shape = TrapShape::Point;
+            else if (v == "cross")     cfg.trap_shape = TrapShape::Cross;
+            else if (v == "circle")    cfg.trap_shape = TrapShape::Circle;
+            else if (v == "astroid")   cfg.trap_shape = TrapShape::Astroid;
+            else if (v == "diamond")   cfg.trap_shape = TrapShape::Diamond;
+            else if (v == "hyperbola") cfg.trap_shape = TrapShape::Hyperbola;
+            else if (v == "waves")     cfg.trap_shape = TrapShape::Waves;
+            else if (v == "spiral")    cfg.trap_shape = TrapShape::Spiral;
+            else { fail("--trap-shape must be point, cross, circle, astroid, diamond, hyperbola, waves, or spiral; got '" + v + "'"); break; }
         }
         else if (flag == "--trap-radius")    { if (!cur.nextDouble(flag, cfg.trap_radius)) break; }
+        else if (flag == "--trap-freq")      { if (!cur.nextDouble(flag, cfg.trap_freq)) break; }
         else if (flag == "--stalk-color")    { if (!cur.nextDouble(flag, cfg.stalk_color)) break; }
         else if (flag == "--stalk-freq")     { if (!cur.nextDouble(flag, cfg.stalk_freq)) break; }
+        else if (flag == "--gauss-color")    { if (!cur.nextDouble(flag, cfg.gauss_color)) break; }
+        else if (flag == "--gauss-freq")     { if (!cur.nextDouble(flag, cfg.gauss_freq)) break; }
+        else if (flag == "--decomp") {
+            if (!cur.nextInt(flag, cfg.decomp)) break;
+            if (cfg.decomp < 0 || cfg.decomp > 8) { fail("--decomp must be 0..8 (2^k angular cells)"); break; }
+        }
+        else if (flag == "--decomp-strength"){ if (!cur.nextDouble(flag, cfg.decomp_strength)) break; }
+        else if (flag == "--sheen")          { if (!cur.nextDouble(flag, cfg.sheen)) break; }
         // ---- album-art / design layer ----
         else if (flag == "--kaleido")    { if (!cur.nextDouble(flag, cfg.kaleido)) break; }
         else if (flag == "--kaleido-angle"){ if (!cur.nextDouble(flag, cfg.kaleido_angle)) break; }

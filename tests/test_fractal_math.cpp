@@ -66,4 +66,48 @@ void test_fractal_math() {
     // Julia distance estimate (z0 = point, dz0 = 1) is positive outside.
     double dj = distanceEstimate({2.0, 2.0}, {cre, cim}, /*mandel=*/false, iters, bail);
     CHECK(dj > 0.0 && std::isfinite(dj));
+
+    // ---- Orbit statistics (bof60/61, expsmooth, curvature) ----
+    // c = 0: the critical orbit is fixed at 0, so the closest approach is 0
+    // at the very first recorded iterate, and nothing escapes.
+    {
+        auto st = orbitStats({0, 0}, {0, 0}, iters, bail);
+        CHECK(!st.escaped);
+        CHECK(st.min_mag < 1e-12);
+        CHECK(st.min_iter == 0);
+        CHECK(st.curv_avg == 0.0); // orbit never moves -> degenerate steps only
+    }
+    // c = -1: the critical orbit is the period-2 cycle 0 -> -1 -> 0 -> ...,
+    // so it returns exactly to the origin and min_mag is 0 (within fp noise).
+    {
+        auto st = orbitStats({0, 0}, {-1, 0}, iters, bail);
+        CHECK(!st.escaped);
+        CHECK(st.min_mag < 1e-9);
+        // The 2-cycle alternates direction every step, so the turning angle is
+        // pi at every measured iterate -> the average is ~1 (of [0,1]).
+        CHECK(st.curv_avg > 0.9);
+    }
+    // An interior point of the main cardioid converges to a fixed point: the
+    // exponential-smoothing sum must be finite and positive, and the orbit
+    // settles (curvature defined, no escape).
+    {
+        auto st = orbitStats({0, 0}, {-0.2, 0.1}, iters, bail);
+        CHECK(!st.escaped);
+        CHECK(st.exp_sum > 0.0 && std::isfinite(st.exp_sum));
+        CHECK(st.min_mag > 0.0); // converges to a nonzero fixed point
+    }
+    // Escaping points still report stats up to the escape iterate.
+    {
+        auto st = orbitStats({0, 0}, {2.0, 2.0}, iters, bail);
+        CHECK(st.escaped);
+        CHECK(st.iter < 10);
+        CHECK(st.min_mag > 0.0 && std::isfinite(st.min_mag));
+        CHECK(st.curv_avg >= 0.0 && st.curv_avg <= 1.0);
+    }
+    // Curvature average is bounded in [0,1] for a typical exterior point with
+    // a long orbit (it is an average of |angle|/pi terms).
+    {
+        auto st = orbitStats({0, 0}, {0.30, 0.0}, iters, bail);
+        CHECK(st.curv_avg >= 0.0 && st.curv_avg <= 1.0);
+    }
 }

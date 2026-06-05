@@ -205,7 +205,7 @@ void test_cli() {
 
     // ---- expanded coloring vocabulary ----
     // Defaults preserve old behavior: rgb interp, no stripe/inside palettes,
-    // posterize off, color_inside off.
+    // posterize off, flat interior.
     {
         auto p = parse({"render"});
         CHECK(p.error.empty());
@@ -213,7 +213,7 @@ void test_cli() {
         CHECK(p.render.stripe_palette.empty());
         CHECK(p.render.inside_palette.empty());
         CHECK(p.render.posterize == 0);
-        CHECK(p.render.color_inside == false);
+        CHECK(p.render.interior_mode == InteriorMode::Flat);
     }
     // Each new flag parses into the right field.
     {
@@ -223,7 +223,7 @@ void test_cli() {
         CHECK(p.error.empty());
         CHECK(p.render.interp == InterpMode::Oklab);
         CHECK(p.render.posterize == 8);
-        CHECK(p.render.color_inside);
+        CHECK(p.render.interior_mode == InteriorMode::SAC); // --color-inside alias
         CHECK(p.render.stripe_palette.size() >= 2);
         CHECK(p.render.inside_palette.size() == 2);
     }
@@ -247,8 +247,135 @@ void test_cli() {
     {
         auto p = parse({"render", "-P", "interior-bloom"});
         CHECK(p.error.empty());
-        CHECK(p.render.color_inside);
+        CHECK(p.render.interior_mode == InteriorMode::SAC);
         CHECK(!p.render.inside_palette.empty());
+    }
+
+    // ---- orbit-statistic flags (relief / traps / stalks) ----
+    {
+        auto p = parse({"render"});
+        CHECK(p.render.relief_mode == ReliefMode::SAC);
+        CHECK(p.render.trap_shape == TrapShape::Point);
+        CHECK(p.render.stalk_color == 0.0);
+        CHECK(p.render.gauss_color == 0.0);
+        CHECK(p.render.decomp == 0);
+        CHECK(p.render.sheen == 0.0);
+    }
+    {
+        auto p = parse({"render", "--relief", "tia"});
+        CHECK(p.error.empty());
+        CHECK(p.render.relief_mode == ReliefMode::TIA);
+    }
+    {
+        auto p = parse({"render", "--relief", "curvature"});
+        CHECK(p.error.empty());
+        CHECK(p.render.relief_mode == ReliefMode::Curvature);
+    }
+    CHECK(!parse({"render", "--relief", "bogus"}).error.empty());
+    {
+        auto p = parse({"render", "--trap-shape", "spiral", "--trap-radius", "0.8",
+                        "--trap-freq", "3.5", "--trap-color", "1.2"});
+        CHECK(p.error.empty());
+        CHECK(p.render.trap_shape == TrapShape::Spiral);
+        CHECK_NEAR(p.render.trap_radius, 0.8, 1e-12);
+        CHECK_NEAR(p.render.trap_freq, 3.5, 1e-12);
+        CHECK_NEAR(p.render.trap_color, 1.2, 1e-12);
+    }
+    {
+        // every shape name parses
+        for (const char* s : {"point", "cross", "circle", "astroid", "diamond",
+                              "hyperbola", "waves", "spiral"})
+            CHECK(parse({"render", "--trap-shape", s}).error.empty());
+        CHECK(!parse({"render", "--trap-shape", "heart"}).error.empty());
+    }
+    {
+        auto p = parse({"render", "--stalk-color", "0.5", "--stalk-freq", "9"});
+        CHECK(p.error.empty());
+        CHECK_NEAR(p.render.stalk_color, 0.5, 1e-12);
+        CHECK_NEAR(p.render.stalk_freq, 9.0, 1e-12);
+    }
+
+    // ---- literature coloring flags ----
+    {
+        auto p = parse({"render", "--interior", "bof60"});
+        CHECK(p.error.empty());
+        CHECK(p.render.interior_mode == InteriorMode::Bof60);
+        CHECK(parse({"render", "--interior", "flat"}).render.interior_mode == InteriorMode::Flat);
+        CHECK(parse({"render", "--interior", "sac"}).render.interior_mode == InteriorMode::SAC);
+        CHECK(parse({"render", "--interior", "bof61"}).render.interior_mode == InteriorMode::Bof61);
+        CHECK(parse({"render", "--interior", "expsmooth"}).render.interior_mode == InteriorMode::ExpSmooth);
+        CHECK(!parse({"render", "--interior", "bogus"}).error.empty());
+    }
+    {
+        auto p = parse({"render", "--gauss-color", "0.7", "--gauss-freq", "8"});
+        CHECK(p.error.empty());
+        CHECK_NEAR(p.render.gauss_color, 0.7, 1e-12);
+        CHECK_NEAR(p.render.gauss_freq, 8.0, 1e-12);
+    }
+    {
+        auto p = parse({"render", "--decomp", "3", "--decomp-strength", "0.5"});
+        CHECK(p.error.empty());
+        CHECK(p.render.decomp == 3);
+        CHECK_NEAR(p.render.decomp_strength, 0.5, 1e-12);
+        CHECK(!parse({"render", "--decomp", "-1"}).error.empty());
+        CHECK(!parse({"render", "--decomp", "9"}).error.empty());
+    }
+    {
+        auto p = parse({"render", "--sheen", "0.4"});
+        CHECK(p.error.empty());
+        CHECK_NEAR(p.render.sheen, 0.4, 1e-12);
+    }
+
+    // ---- literature coloring presets ----
+    {
+        auto p = parse({"render", "-P", "ember-eyes"});
+        CHECK(p.error.empty());
+        CHECK(p.render.interior_mode == InteriorMode::Bof60);
+        CHECK(!p.render.inside_palette.empty());
+    }
+    {
+        auto p = parse({"render", "-P", "atom-cells"});
+        CHECK(p.error.empty());
+        CHECK(p.render.interior_mode == InteriorMode::Bof61);
+    }
+    {
+        auto p = parse({"render", "-P", "glass-lake"});
+        CHECK(p.error.empty());
+        CHECK(p.render.interior_mode == InteriorMode::ExpSmooth);
+    }
+    {
+        auto p = parse({"render", "-P", "marble-vein"});
+        CHECK(p.error.empty());
+        CHECK(p.render.relief_mode == ReliefMode::Curvature);
+        CHECK(p.render.color_density == 0.0);
+    }
+    {
+        auto p = parse({"render", "-P", "peitgen-grid"});
+        CHECK(p.error.empty());
+        CHECK(p.render.decomp == 1);
+    }
+    {
+        auto p = parse({"render", "-P", "crystal-court"});
+        CHECK(p.error.empty());
+        CHECK(p.render.gauss_color > 0.0);
+    }
+    {
+        auto p = parse({"render", "-P", "oil-slick"});
+        CHECK(p.error.empty());
+        CHECK(p.render.sheen > 0.0);
+        CHECK(p.render.log_iter);
+    }
+    {
+        auto p = parse({"render", "-P", "whirlpool"});
+        CHECK(p.error.empty());
+        CHECK(p.render.trap_shape == TrapShape::Spiral);
+        CHECK(p.render.trap_color > 0.0);
+    }
+    // explicit flags still override the preset base
+    {
+        auto p = parse({"render", "-P", "ember-eyes", "--interior", "flat"});
+        CHECK(p.error.empty());
+        CHECK(p.render.interior_mode == InteriorMode::Flat);
     }
 
     // ---- error handling ----

@@ -333,7 +333,10 @@ void Renderer::render(const RenderConfig& cfg) {
         setUniform1i(deep_prog_, "uStripePalette", 1);
         setUniform1i(deep_prog_, "uInsidePalette", 2);
         setUniform1i(deep_prog_, "uHasStripePalette", has_stripe_palette_ ? 1 : 0);
-        setUniform1i(deep_prog_, "uColorInside",     cfg.color_inside ? 1 : 0);
+        // deep.frag only implements the SAC interior (the literature interior
+        // modes are shallow-only); other modes fall back to flat inside_color.
+        setUniform1i(deep_prog_, "uColorInside",
+                     cfg.interior_mode == InteriorMode::SAC ? 1 : 0);
         setUniform1i(deep_prog_, "uPosterize",       cfg.posterize);
         setUniform1i(deep_prog_, "uLogIter",         cfg.log_iter ? 1 : 0);
         setUniform1f(deep_prog_, "uSlopes",          (float)cfg.slopes);
@@ -388,7 +391,7 @@ void Renderer::render(const RenderConfig& cfg) {
     setUniform1i(fractal_prog_, "uInsidePalette", 2);
     setUniform1i(fractal_prog_, "uNebulaTex",     3);
     setUniform1i(fractal_prog_, "uHasStripePalette", has_stripe_palette_ ? 1 : 0);
-    setUniform1i(fractal_prog_, "uColorInside",     cfg.color_inside ? 1 : 0);
+    setUniform1i(fractal_prog_, "uInteriorMode",    (int)cfg.interior_mode);
     setUniform1i(fractal_prog_, "uPosterize",       cfg.posterize);
     setUniform1f(fractal_prog_, "uNebulaWeight",   has_nebula_ ? (float)cfg.nebula_accent : 0.0f);
     setUniform3f(fractal_prog_, "uNebulaColor",    cfg.nebula_color.r, cfg.nebula_color.g, cfg.nebula_color.b);
@@ -400,8 +403,14 @@ void Renderer::render(const RenderConfig& cfg) {
     setUniform1i(fractal_prog_, "uReliefMode",     (int)cfg.relief_mode);
     setUniform1i(fractal_prog_, "uTrapShape",      (int)cfg.trap_shape);
     setUniform1f(fractal_prog_, "uTrapRadius",     (float)cfg.trap_radius);
+    setUniform1f(fractal_prog_, "uTrapFreq",       (float)cfg.trap_freq);
     setUniform1f(fractal_prog_, "uStalkColor",     (float)cfg.stalk_color);
     setUniform1f(fractal_prog_, "uStalkFreq",      (float)cfg.stalk_freq);
+    setUniform1f(fractal_prog_, "uGaussColor",     (float)cfg.gauss_color);
+    setUniform1f(fractal_prog_, "uGaussFreq",      (float)cfg.gauss_freq);
+    setUniform1i(fractal_prog_, "uDecomp",         cfg.decomp);
+    setUniform1f(fractal_prog_, "uDecompStrength", (float)cfg.decomp_strength);
+    setUniform1f(fractal_prog_, "uSheen",          (float)cfg.sheen);
     setUniform1f(fractal_prog_, "uColorDensity", (float)cfg.color_density);
     setUniform1f(fractal_prog_, "uColorOffset", (float)cfg.color_offset);
     setUniform1f(fractal_prog_, "uAngleColor", (float)cfg.angle_color);

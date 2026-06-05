@@ -29,16 +29,23 @@ uniform sampler2D uStripePalette; // gradient for the stripe (SAC) layer
 uniform sampler2D uInsidePalette; // gradient for set-interior coloring
 uniform sampler2D uNebulaTex;     // optional Buddhabrot density accent (R-channel)
 uniform bool      uHasStripePalette; // false -> reuse uPalette for stripe layer
-uniform bool      uColorInside;      // color set interior by SAC instead of flat
+uniform int       uInteriorMode;     // 0 flat, 1 SAC, 2 bof60, 3 bof61, 4 expsmooth
 uniform int       uPosterize;        // 0 = off, otherwise quantize sample pos
 uniform bool      uLogIter;          // Maths Town-style cyclic log-iter coloring
 uniform float     uSlopes;           // directional shading from log(mu) gradient (0 = off)
 uniform float     uSlopesSpec;       // specular intensity for slopes (0 = none)
-uniform int       uReliefMode;       // 0 = SAC stripe, 1 = TIA (Triangle Inequality Avg)
-uniform int       uTrapShape;        // 0 = point, 1 = cross, 2 = circle
-uniform float     uTrapRadius;       // for trap shape = circle
+uniform int       uReliefMode;       // 0 = SAC stripe, 1 = TIA, 2 = curvature average
+uniform int       uTrapShape;        // 0 point, 1 cross, 2 circle, 3 astroid,
+                                     // 4 diamond, 5 hyperbola, 6 waves, 7 spiral
+uniform float     uTrapRadius;       // trap shape size
+uniform float     uTrapFreq;         // waves sine freq / spiral twist
 uniform float     uStalkColor;       // Pickover stalks weight (0 = off)
 uniform float     uStalkFreq;        // stalk falloff sharpness
+uniform float     uGaussColor;       // Gaussian-integer lattice weight (0 = off)
+uniform float     uGaussFreq;        // lattice-distance falloff sharpness
+uniform int       uDecomp;           // binary decomposition: 2^k cells (0 = off)
+uniform float     uDecompStrength;   // darkening of alternate decomposition cells
+uniform float     uSheen;            // slope-angle iridescent hue shift (0 = off)
 uniform float     uNebulaWeight;     // strength of the nebula accent (0 = off)
 uniform vec3      uNebulaColor;      // wisp tint (multiplied by density); ignored in RGB mode
 uniform float     uNebulaHueShift;   // density modulates stripe sample position
@@ -165,11 +172,16 @@ void main() {
     int   i;
     float m2        = dot(z, z);
     float trap      = 1e20;  // closest the orbit comes to uTrapPoint
-    float stripeSum = 0.0;   // running sum of stripe / TIA terms (mode-dependent)
+    float stripeSum = 0.0;   // running sum of stripe / TIA / curvature terms
     float lastTerm  = 0.0;   // most recent stripe term (for de-banding)
     int   stripeN   = 0;     // number of stripe terms summed
     float stalkMin  = 1e20;  // Pickover stalks: min |z.x| or |z.y| seen
-    vec2  zprev     = vec2(0.0); // previous z, for Phoenix
+    float gaussMin  = 1e20;  // Gaussian integer: min dist to round(z) lattice
+    float minMag2   = 1e20;  // bof60/61: closest |z|^2 the orbit reaches
+    int   minIter   = 0;     // bof61: iteration index of that closest approach
+    float expSum    = 0.0;   // expsmooth: sum of exp(-1/|z_n - z_{n-1}|)
+    vec2  zprev     = vec2(0.0); // z_{n-1}: Phoenix / curvature / expsmooth
+    vec2  zprev2    = vec2(0.0); // z_{n-2}: curvature average
     for (i = 0; i < uMaxIter; i++) {
         // Formula transform applied to z before squaring: Burning Ship folds
         // both components positive; Tricorn conjugates. Quadratic/Phoenix leave
@@ -177,15 +189,19 @@ void main() {
         vec2 zt = z;
         if      (uFormula == 1) zt = vec2(abs(z.x), abs(z.y)); // Burning Ship
         else if (uFormula == 2) zt = vec2(z.x, -z.y);          // Tricorn
-        // Update derivative using the current z, then advance z.
+        // Update derivative using the current z, then advance z (shifting the
+        // z_{n-1}/z_{n-2} history that Phoenix, curvature, and expsmooth use).
         if (quad) {
             if (useDE) dz = 2.0 * cmul(zt, dz) + one;
             vec2 znew = cmul(zt, zt) + c;
             if (uFormula == 3) znew += cmul(uPhoenixP, zprev); // Phoenix z_prev term
-            zprev = z;
+            zprev2 = zprev;
+            zprev  = z;
             z = znew;
         } else {
             if (useDE) dz = uExponent * cmul(cpow(zt, uExponent - 1.0), dz) + one;
+            zprev2 = zprev;
+            zprev  = z;
             z  = cpow(zt, uExponent) + c;
         }
         if (useTrap) {
@@ -193,17 +209,53 @@ void main() {
             float d;
             if      (uTrapShape == 1) d = min(abs(dv.x), abs(dv.y));        // cross
             else if (uTrapShape == 2) d = abs(length(dv) - uTrapRadius);    // ring
+            else if (uTrapShape == 3)                                       // astroid
+                d = abs(pow(abs(dv.x), 2.0/3.0) + pow(abs(dv.y), 2.0/3.0)
+                        - pow(uTrapRadius, 2.0/3.0));
+            else if (uTrapShape == 4) d = abs(abs(dv.x) + abs(dv.y) - uTrapRadius); // diamond
+            else if (uTrapShape == 5) d = abs(dv.x * dv.y - uTrapRadius);   // hyperbola
+            else if (uTrapShape == 6)                                       // waves
+                d = abs(abs(dv.y) - uTrapRadius
+                        + sin(dv.x * uTrapFreq) * 0.5 * uTrapRadius);
+            else if (uTrapShape == 7) {                                     // log-spiral
+                float r = length(dv);
+                float a = atan(dv.y, dv.x);
+                d = abs(sin(a + uTrapFreq * log(max(r, 1e-9)))) * r;
+            }
             else                      d = length(dv);                       // point
             trap = min(trap, d);
         }
         // Pickover stalks: closest the orbit ever came to either coordinate
         // axis. Independent of trap; combines with stripe sample below.
         if (uStalkColor > 0.0) stalkMin = min(stalkMin, min(abs(z.x), abs(z.y)));
-        if (useStripe && i >= kStripeSkip) {
-            // ReliefMode dispatch: SAC (sine of orbit angle) vs TIA (where
-            // |z'+c| lies in the triangle-inequality window). TIA needs z
-            // BEFORE this iteration's update (= zt, the formula-transformed z
-            // already in scope). |zt^2| = dot(zt,zt) saves a sqrt.
+        // Gaussian integer: closest the orbit ever came to ANY integer lattice
+        // point. The lattice is dense everywhere (unlike one trap point), so
+        // this lays a crystalline grid texture over the whole plane.
+        if (uGaussColor > 0.0) {
+            vec2 g = z - vec2(floor(z.x + 0.5), floor(z.y + 0.5));
+            gaussMin = min(gaussMin, length(g));
+        }
+        // Interior statistics (bof60/61, expsmooth). Cheap, but gated so the
+        // default path stays byte-identical.
+        if (uInteriorMode >= 2) {
+            float zm2 = dot(z, z);
+            if (zm2 < minMag2) { minMag2 = zm2; minIter = i; }
+            // Convergence step: min of the distances to the previous TWO
+            // iterates, so orbits settling onto a period-2 cycle (whose
+            // consecutive iterates stay far apart forever) still read as
+            // converged via z_{n-2}.
+            if (uInteriorMode == 4 && i >= 2)
+                expSum += exp(-1.0 / max(min(distance(z, zprev),
+                                             distance(z, zprev2)), 1e-12));
+        }
+        // Curvature needs two prior orbit points, so it skips one extra
+        // leading iteration (the history is still zero-initialized at i=1).
+        if (useStripe && i >= (uReliefMode == 2 ? kStripeSkip + 1 : kStripeSkip)) {
+            // ReliefMode dispatch: SAC (sine of orbit angle), TIA (where
+            // |z'+c| lies in the triangle-inequality window), or curvature
+            // average (the orbit path's turning angle). TIA needs z BEFORE
+            // this iteration's update (= zt, the formula-transformed z already
+            // in scope); curvature needs the two PREVIOUS orbit points.
             float term;
             if (uReliefMode == 1) {
                 float mz2  = dot(zt, zt);
@@ -213,6 +265,19 @@ void main() {
                 float lo   = abs(mz2 - mc);
                 float hi   = mz2 + mc;
                 term = clamp((mnew - lo) / max(hi - lo, 1e-9), 0.0, 1.0);
+            } else if (uReliefMode == 2) {
+                // Curvature average (Haerkoenen eq 4.8): |arg of the ratio of
+                // successive orbit steps| / pi, i.e. how sharply the orbit
+                // path bends at z_{n-1}. A degenerate (zero) step would blow
+                // up the ratio; reuse the previous term so the average is
+                // undisturbed.
+                vec2 num = z     - zprev;
+                vec2 den = zprev - zprev2;
+                term = lastTerm;
+                if (dot(den, den) > 1e-30) {
+                    vec2 q = cdiv(num, den);
+                    term = abs(atan(q.y, q.x)) / PI;
+                }
             } else {
                 term = 0.5 + 0.5 * sin(uStripeFreq * atan(z.y, z.x));
             }
@@ -225,14 +290,34 @@ void main() {
     }
 
     if (i >= uMaxIter) {
-        // Set interior. Default is the flat uInsideColor; when uColorInside is
-        // on, color by the SAC-style stripe value the orbit accumulated -- so
-        // the set body becomes its own miniature scene instead of solid black.
-        if (uColorInside && useStripe && stripeN > 0) {
+        // Set interior. Default is the flat uInsideColor; the other modes
+        // color by an orbit statistic so the set body becomes its own
+        // miniature scene instead of solid black. (See InteriorMode.)
+        if (uInteriorMode == 1 && useStripe && stripeN > 0) {
+            // SAC: the orbit's accumulated stripe value.
             float sacIn = stripeSum / float(stripeN);
             sacIn = (sacIn - 0.5) * uStripeContrast + 0.5;
             float sIn = fract(clamp(sacIn, 0.0, 1.0) + uColorOffset);
             FragColor = vec4(sampleInside(sIn), 1.0);
+        } else if (uInteriorMode == 2) {
+            // bof60: closest approach to the origin. Bounded orbits pass near
+            // 0 periodically; how near maps to glowing nested "embryo" shapes
+            // (Beauty of Fractals p.60 -- classically scaled by sqrt).
+            float sIn = fract(clamp(pow(minMag2, 0.25), 0.0, 1.0) + uColorOffset);
+            FragColor = vec4(sampleInside(sIn), 1.0);
+        } else if (uInteriorMode == 3) {
+            // bof61 / atom domains: WHICH iteration came closest to 0. Flat
+            // cells keyed by period; golden-ratio spacing makes consecutive
+            // indices land far apart in the gradient so domains read as
+            // distinct color cells.
+            float sIn = fract(float(minIter) * 0.61803398875 + uColorOffset);
+            FragColor = vec4(sampleInside(sIn), 1.0);
+        } else if (uInteriorMode == 4) {
+            // Exponential smoothing (convergent form): orbits that take long
+            // to settle accumulate a larger sum -> brighter. Mapped with the
+            // same exp ramp as the iteration layer so --color-density tunes it.
+            float sIn = 1.0 - exp(-expSum * max(uColorDensity, 1e-4) * 4.0);
+            FragColor = vec4(sampleInside(fract(sIn * 0.98 + uColorOffset)), 1.0);
         } else {
             FragColor = vec4(uInsideColor, 1.0);
         }
@@ -281,8 +366,20 @@ void main() {
     // Adds another orbit-statistic contribution to stripeS, independent of SAC,
     // angle, and trap. Reveals cross/stalk patterns hidden to other techniques.
     float stalkS = (uStalkColor > 0.0) ? exp(-uStalkFreq * stalkMin) : 0.0;
+    // Gaussian integer: same exp mapping, but against the orbit's closest pass
+    // to the unit lattice -- a crystalline grid statistic.
+    float gaussS = (uGaussColor > 0.0) ? exp(-uGaussFreq * gaussMin) : 0.0;
+    // Slope-angle sheen: the DIRECTION the escape-time field falls off in,
+    // routed to hue. (The atan2 of a gradient is scale-free, so no resolution
+    // normalization is needed.) Iridescent oil-film look on cyclic palettes.
+    float sheenS = 0.0;
+    if (uSheen != 0.0) {
+        float h = log(mu);
+        sheenS = atan(dFdy(h), dFdx(h)) / (2.0 * PI) + 0.5;
+    }
     stripeS = fract(stripeS + uAngleColor * angle + uTrapColor * trap +
-                    uStalkColor * stalkS + uColorOffset);
+                    uStalkColor * stalkS + uGaussColor * gaussS +
+                    uSheen * sheenS + uColorOffset);
 
     // Nebula hybrid: sample density ONCE up front; reused by both the hue-
     // shift (modality 2, modifies stripeS before palette lookup) and the
@@ -315,7 +412,7 @@ void main() {
         float iterS;
         float gate;
         if (uLogIter) {
-            iterS = fract(log(mu) * uColorDensity + uColorOffset);
+            iterS = fract(log(mu) * uColorDensity + uColorOffset + uSheen * sheenS);
             gate  = 1.0; // bands all the way out; no fast-escape suppression
         } else {
             iterS = 1.0 - exp(-mu * uColorDensity);
@@ -330,6 +427,21 @@ void main() {
             vec3 iterCol   = sampleIter(iterS);
             col = mix(iterCol, stripeCol * gate, uStripeColor);
         }
+    }
+
+    // Binary decomposition (Peitgen's "Beauty of Fractals" grid): split each
+    // dwell band into 2^k angular cells by the escape argument and darken
+    // alternate cells. The vertical cell edges trace external rays (field
+    // lines), the horizontal ones equipotentials -- the classic B/W checkered
+    // exterior, here as a multiplicative overlay on ANY coloring underneath.
+    // (The large default bailout keeps cells near-square, like B = e^pi does
+    // in the classic renders.)
+    if (uDecomp > 0) {
+        float cells  = exp2(float(uDecomp));
+        float sector = floor(angle * cells);   // angle is the escape arg in [0,1)
+        float band   = floor(mu);              // dwell band index
+        float parity = mod(sector + band, 2.0);
+        col *= 1.0 - uDecompStrength * parity;
     }
 
     // Blinn-Phong lighting of the relief as a height field. The stripe/iteration

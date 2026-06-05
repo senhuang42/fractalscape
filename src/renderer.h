@@ -39,7 +39,7 @@ public:
     void setStripePalette(const std::vector<uint8_t>& rgb, int resolution);
 
     // Optional palette for set-interior coloring (only sampled when the config
-    // has color_inside enabled). Empty buffer clears it.
+    // has an interior_mode other than Flat). Empty buffer clears it.
     void setInsidePalette(const std::vector<uint8_t>& rgb, int resolution);
 
     // Optional Buddhabrot density texture for the hybrid accent layer. RGB8,

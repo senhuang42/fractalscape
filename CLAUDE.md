@@ -153,6 +153,27 @@ make test                    # -> ./run_tests (GL-free unit tests)
   `cividis`) are intentionally low-contrast and left alone.
 - **Palettes** are dark→bright ramps in `palette.cpp`; restrained ones keep
   detail coherent, wider-gamut ones (sunset/neon/prism/etc.) are vibrant.
+- **Literature coloring modes (2026-06) — what works where.** Four hard-won
+  placement rules from adding curvature/bof60/bof61/expsmooth/decomp/gauss/sheen:
+  1. *bof60/bof61 interiors need MANDELBROT.* On a Julia every interior orbit
+     falls into the same attracting cycle, so min|z| (and its index) is nearly
+     constant → flat black. On Mandelbrot each pixel is a different `c` and the
+     statistic varies → the classic glowing-embryo / atom-domain structure.
+     (`ember-eyes` was a black rabbit until reframed.)
+  2. *expsmooth measures convergence as min(|z-z₁|, |z-z₂|)* — against the
+     previous TWO iterates. Plain |Δz| never shrinks on a period-2 attractor
+     (basilica), so the sum grows forever and the interior saturates white.
+     Period ≥3 Julia interiors still saturate; use Mandelbrot or period ≤2.
+  3. *Decomposition cells live in the FAST-escape exterior*, exactly where the
+     SAC gate paints black — so `--decomp` over gated SAC is invisible. Pair it
+     with `--log-iter` (gateless; every pixel reads a band) or a mono iter ramp
+     (`peitgen-grid`).
+  4. *Curvature average is flat on whole-set views* (interior-adjacent orbits
+     all bend alike); it needs a boundary zoom where bending varies
+     (`marble-vein` sits at the rabbit ear junction, `flame-curl` in seahorse
+     valley).
+  Also: `--sheen` shifts the stripe palette coord (and log-iter bands) — with
+  `stripe_color 0` and exp coloring it's a silent no-op by design.
 - **Zoom videos**: the default path is 32-bit float -> pixelates past ~1e4×.
   Keep the target on a detail-rich exterior point at ALL scales (probe with
   stills) or the path crosses black set-interior bodies. -0.7453,0.1127 works
